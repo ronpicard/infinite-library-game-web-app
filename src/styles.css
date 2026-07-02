@@ -1,0 +1,550 @@
+:root {
+  --ink: #2b2018;
+  --paper: #efe4cc;
+  --paper-edge: #d8c9a8;
+  --gold: #c9a86a;
+  --gold-dim: #8a744d;
+  --crimson: #b32e39;
+  --bg: #0a0704;
+  font-family: 'EB Garamond', Georgia, 'Times New Roman', serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root,
+.app {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.game-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+body {
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.serif-button {
+  background: transparent;
+  color: var(--gold);
+  border: 1px solid var(--gold-dim);
+  padding: 0.55em 1.6em;
+  font-size: 1.05rem;
+  letter-spacing: 0.12em;
+  transition: background 0.25s, color 0.25s;
+}
+
+.serif-button:hover {
+  background: var(--gold);
+  color: var(--bg);
+}
+
+/* ---------------------------------------------------------- overlays */
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+/* ---------------------------------------------------------- splash */
+.splash {
+  background: radial-gradient(ellipse at 50% 40%, #171008 0%, var(--bg) 70%);
+  animation: fade-in 1.4s ease;
+}
+
+.splash-inner {
+  text-align: center;
+  color: #d8c9a8;
+  max-width: 34rem;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.4rem;
+}
+
+.splash-rule {
+  width: 12rem;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold-dim), transparent);
+}
+
+.splash-rule.crimson {
+  background: linear-gradient(90deg, transparent, var(--crimson), transparent);
+}
+
+.splash-title {
+  font-size: 2.8rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  font-variant: small-caps;
+  color: var(--gold);
+  text-shadow: 0 0 32px rgba(201, 168, 106, 0.25);
+}
+
+.splash-homage {
+  font-style: italic;
+  font-size: 1.15rem;
+  line-height: 1.6;
+  color: #b3a184;
+}
+
+.splash-controls {
+  display: flex;
+  gap: 1.4rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  color: #756349;
+}
+
+.splash-goal {
+  font-variant: small-caps;
+  letter-spacing: 0.2em;
+  color: var(--crimson);
+  font-size: 1rem;
+}
+
+/* ---------------------------------------------------------- HUD */
+.hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  color: #cbb994;
+}
+
+.crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  border-radius: 50%;
+  background: rgba(233, 214, 175, 0.75);
+  box-shadow: 0 0 6px rgba(233, 214, 175, 0.5);
+}
+
+.hud-top {
+  position: absolute;
+  top: 1.2rem;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.hud-facing {
+  font-size: 0.95rem;
+  letter-spacing: 0.14em;
+  font-variant: small-caps;
+  color: rgba(203, 185, 148, 0.8);
+}
+
+.hud-facing em {
+  color: var(--gold);
+}
+
+.hud-path {
+  display: flex;
+  gap: 0.55rem;
+}
+
+.path-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1px solid rgba(179, 46, 57, 0.6);
+  background: transparent;
+  transition: background 0.4s, box-shadow 0.4s;
+}
+
+.path-dot.lit {
+  background: var(--crimson);
+  box-shadow: 0 0 8px rgba(179, 46, 57, 0.8);
+}
+
+.hud-stats {
+  position: absolute;
+  left: 1.4rem;
+  bottom: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.9rem;
+  letter-spacing: 0.06em;
+  color: rgba(203, 185, 148, 0.7);
+}
+
+.hud-interact {
+  position: absolute;
+  left: 50%;
+  top: 56%;
+  transform: translateX(-50%);
+  font-size: 0.95rem;
+  letter-spacing: 0.18em;
+  font-variant: small-caps;
+  color: var(--gold);
+  text-shadow: 0 0 10px rgba(0, 0, 0, 0.9);
+}
+
+.hud-resume {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 1.1rem;
+  letter-spacing: 0.16em;
+  font-variant: small-caps;
+  color: var(--gold);
+  background: rgba(10, 7, 4, 0.72);
+  padding: 0.8em 1.6em;
+  border: 1px solid rgba(138, 116, 77, 0.5);
+}
+
+.hud-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 14%;
+  transform: translateX(-50%);
+  font-style: italic;
+  font-size: 1.05rem;
+  color: #d8c9a8;
+  text-shadow: 0 0 12px rgba(0, 0, 0, 1);
+  animation: toast 3.5s ease forwards;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------- book page */
+.book-overlay {
+  background: rgba(5, 3, 2, 0.72);
+  animation: fade-in 0.3s ease;
+}
+
+.book-page {
+  width: min(44rem, 92vw);
+  max-height: 86vh;
+  overflow-y: auto;
+  background: linear-gradient(160deg, var(--paper) 0%, #e2d3b0 60%, var(--paper-edge) 100%);
+  color: var(--ink);
+  padding: 3rem 3.4rem 2.4rem;
+  box-shadow: 0 0 60px rgba(0, 0, 0, 0.9), inset 0 0 80px rgba(120, 90, 40, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 1.3rem;
+}
+
+.book-kind {
+  font-variant: small-caps;
+  letter-spacing: 0.22em;
+  font-size: 0.8rem;
+  color: #8a6a3c;
+  text-align: center;
+}
+
+.kind-clue .book-kind,
+.kind-intro .book-kind {
+  color: var(--crimson);
+}
+
+.book-title {
+  font-size: 1.6rem;
+  font-weight: 500;
+  font-style: italic;
+  text-align: center;
+  border-bottom: 1px solid rgba(43, 32, 24, 0.25);
+  padding-bottom: 0.9rem;
+}
+
+.book-body {
+  white-space: pre-wrap;
+  font-size: 1.02rem;
+  line-height: 1.75;
+  text-align: justify;
+  hyphens: auto;
+  overflow-wrap: anywhere;
+}
+
+.kind-clue .book-body,
+.kind-intro .book-body {
+  text-align: left;
+}
+
+.book-close {
+  align-self: center;
+  color: #6d5327;
+  border-color: rgba(109, 83, 39, 0.5);
+  font-size: 0.9rem;
+}
+
+.book-close:hover {
+  background: #6d5327;
+  color: var(--paper);
+}
+
+/* ---------------------------------------------------------- pause menu */
+.pause-menu {
+  background: rgba(6, 4, 2, 0.82);
+  animation: fade-in 0.25s ease;
+}
+
+.pause-inner {
+  text-align: center;
+  color: #d8c9a8;
+  max-width: 30rem;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.pause-title {
+  font-variant: small-caps;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  font-size: 1.7rem;
+  color: var(--gold);
+}
+
+.pause-buttons {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.pause-restart {
+  color: #a3552e;
+  border-color: rgba(163, 85, 46, 0.55);
+}
+
+.pause-restart:hover {
+  background: #a3552e;
+  color: var(--bg);
+}
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.4rem 0;
+}
+
+.settings-title {
+  font-variant: small-caps;
+  letter-spacing: 0.22em;
+  font-size: 0.8rem;
+  color: #79624f;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  font-size: 0.9rem;
+  letter-spacing: 0.1em;
+  font-variant: small-caps;
+  color: #b3a184;
+}
+
+.settings-row input[type='range'] {
+  width: 11rem;
+  accent-color: var(--gold);
+}
+
+.settings-row input[type='range']:disabled {
+  opacity: 0.35;
+}
+
+.settings-mute {
+  font-size: 0.85rem;
+  padding: 0.35em 1.2em;
+}
+
+/* ---------------------------------------------------------- touch controls */
+.touch-controls {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.joystick {
+  position: absolute;
+  left: 1.6rem;
+  bottom: 4.6rem;
+  width: 8.5rem;
+  height: 8.5rem;
+  border-radius: 50%;
+  border: 1px solid rgba(201, 168, 106, 0.35);
+  background: rgba(20, 14, 8, 0.35);
+  pointer-events: auto;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.joystick-thumb {
+  width: 3.4rem;
+  height: 3.4rem;
+  border-radius: 50%;
+  background: rgba(201, 168, 106, 0.35);
+  border: 1px solid rgba(201, 168, 106, 0.55);
+}
+
+.touch-read {
+  position: absolute;
+  right: 2rem;
+  bottom: 5.4rem;
+  width: 5.4rem;
+  height: 5.4rem;
+  border-radius: 50%;
+  background: rgba(20, 14, 8, 0.55);
+  border: 1px solid var(--gold);
+  color: var(--gold);
+  font-size: 1.05rem;
+  font-variant: small-caps;
+  letter-spacing: 0.12em;
+  pointer-events: auto;
+}
+
+.touch-pause {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 50%;
+  background: rgba(20, 14, 8, 0.5);
+  border: 1px solid rgba(201, 168, 106, 0.45);
+  color: rgba(201, 168, 106, 0.85);
+  font-size: 0.7rem;
+  pointer-events: auto;
+}
+
+@media (max-width: 700px) {
+  .book-page {
+    padding: 1.8rem 1.4rem 1.4rem;
+    max-height: 92vh;
+  }
+
+  .book-title {
+    font-size: 1.3rem;
+  }
+
+  .splash-title {
+    font-size: 2rem;
+  }
+
+  .hud-stats {
+    font-size: 0.75rem;
+  }
+}
+
+/* ---------------------------------------------------------- ending */
+.ending {
+  background: radial-gradient(ellipse at 50% 45%, #1c0508 0%, #060202 75%);
+  animation: fade-in 2.2s ease;
+}
+
+.ending-inner {
+  max-width: 40rem;
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: 2rem;
+  text-align: center;
+  color: #cfb9a0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.3rem;
+}
+
+.ending-title {
+  font-variant: small-caps;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  font-size: 2.1rem;
+  color: var(--crimson);
+  text-shadow: 0 0 40px rgba(179, 46, 57, 0.5);
+}
+
+.ending-book-title {
+  font-style: italic;
+  font-weight: 400;
+  font-size: 1.25rem;
+  color: #a8907a;
+}
+
+.ending-body {
+  white-space: pre-wrap;
+  text-align: left;
+  line-height: 1.8;
+  font-size: 1.02rem;
+}
+
+.ending-stats {
+  font-size: 0.9rem;
+  letter-spacing: 0.1em;
+  font-variant: small-caps;
+  color: #79624f;
+}
+
+/* ---------------------------------------------------------- animation */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes toast {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+  12% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
