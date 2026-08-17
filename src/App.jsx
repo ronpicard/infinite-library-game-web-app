@@ -50,7 +50,6 @@ export default function App() {
   const [muted, setMuted] = useState(false);
   const [brightness, setBrightness] = useState(DEFAULT_BRIGHTNESS);
   const winPendingRef = useRef(false);
-  const winTimer = useRef(null);
   const crimsonArrivingRef = useRef(false);
   const [crimsonArriving, setCrimsonArriving] = useState(false);
   const seenRevelationsRef = useRef(new Set());
@@ -133,14 +132,14 @@ export default function App() {
           }
           if (phaseRef.current !== 'playing') return;
           if (target.crimson) {
-            // Taking the perfect book: let it ascend for a moment, then
-            // the ending takes over. There is no walking away from it.
+            // Taking the perfect book: the ending overlay takes over.
+            // There is no walking away from it.
             winPendingRef.current = true;
             engine.markWon();
             getAudio()?.win();
             engine.setPaused(true);
+            setPhaseSync('ended');
             document.exitPointerLock();
-            winTimer.current = setTimeout(() => setPhaseSync('ended'), 2200);
             return;
           }
           const [q, r] = target.room.split(',').map(Number);
@@ -234,7 +233,6 @@ export default function App() {
 
   const restart = useCallback(() => {
     getAudio()?.uiClick();
-    clearTimeout(winTimer.current);
     winPendingRef.current = false;
     openedRef.current = new Set();
     fragmentsRef.current = new Set();
@@ -291,7 +289,8 @@ export default function App() {
     !openBook &&
     !menuOpen &&
     !crimsonArriving &&
-    !mystery;
+    !mystery &&
+    !winPendingRef.current;
 
   return (
     <div className="app">

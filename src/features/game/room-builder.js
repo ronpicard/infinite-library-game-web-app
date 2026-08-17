@@ -15,15 +15,19 @@ import {
   axialToWorld,
 } from '../world/hex.js';
 import { createRoomCats, disposeCats } from './library-cats.js';
+import { createFlowBeings, disposeFlowBeings } from './flow-beings.js';
+import {
+  COLUMN_RADIUS,
+  COLUMN_RING_RADIUS,
+  DOOR_HALF_WIDTH,
+  DOOR_PASS_HALF,
+  RAIL_RADIUS,
+} from './floor-clamp.js';
 
-export const DOOR_HALF_WIDTH = 1.1;
-/** Clear half-width through a doorway after frame posts (collision + cats). */
-export const DOOR_PASS_HALF = 0.92;
+export { DOOR_HALF_WIDTH, DOOR_PASS_HALF, RAIL_RADIUS, COLUMN_RADIUS, COLUMN_RING_RADIUS };
+
 export const DOOR_HEIGHT = 3.4;
 export const VOID_RADIUS = 1.5;
-export const RAIL_RADIUS = 1.78;
-export const COLUMN_RADIUS = 0.3;
-export const COLUMN_RING_RADIUS = HEX_RADIUS - 0.62;
 const WALL_T = 0.3;
 /** Wall center sits fully inside the hex so adjacent rooms no longer z-fight. */
 const WALL_ND = HEX_INRADIUS - WALL_T / 2 - 0.02;
@@ -270,12 +274,14 @@ function buildDoorway(group, sm, dirIndex) {
   addWallBox(group, sm.wall, dirIndex, sideW, ROOM_HEIGHT, WALL_T, -off, ROOM_HEIGHT / 2, nd);
   const lintelH = ROOM_HEIGHT - DOOR_HEIGHT;
   addWallBox(group, sm.wall, dirIndex, DOOR_HALF_WIDTH * 2, lintelH, WALL_T, 0, DOOR_HEIGHT + lintelH / 2, nd);
-  // Frame posts hug the opening edge; shallower depth avoids clipping into walkers.
-  const postTan = DOOR_HALF_WIDTH - 0.02;
-  addWallBox(group, sm.trim, dirIndex, 0.16, DOOR_HEIGHT, 0.36, postTan, DOOR_HEIGHT / 2, nd);
-  addWallBox(group, sm.trim, dirIndex, 0.16, DOOR_HEIGHT, 0.36, -postTan, DOOR_HEIGHT / 2, nd);
-  addWallBox(group, sm.trim, dirIndex, DOOR_HALF_WIDTH * 2 + 0.2, 0.22, 0.36, 0, DOOR_HEIGHT + 0.08, nd);
-  addWallBox(group, sm.accent, dirIndex, 0.36, 0.3, 0.4, 0, DOOR_HEIGHT + 0.1, nd);
+  // Posts sit fully inside the hex so they no longer collide with the neighbor's frame.
+  const postW = 0.14;
+  const postD = 0.2;
+  const postTan = DOOR_HALF_WIDTH - postW / 2;
+  addWallBox(group, sm.trim, dirIndex, postW, DOOR_HEIGHT, postD, postTan, DOOR_HEIGHT / 2, nd);
+  addWallBox(group, sm.trim, dirIndex, postW, DOOR_HEIGHT, postD, -postTan, DOOR_HEIGHT / 2, nd);
+  addWallBox(group, sm.trim, dirIndex, DOOR_HALF_WIDTH * 2 + 0.16, 0.2, postD, 0, DOOR_HEIGHT + 0.06, nd);
+  addWallBox(group, sm.accent, dirIndex, 0.32, 0.26, 0.28, 0, DOOR_HEIGHT + 0.08, nd);
 }
 
 function buildShelfFrame(group, sm, dirIndex, rowYs) {
@@ -305,9 +311,18 @@ function buildColumns(group, sm) {
   }
 }
 
-function buildCornice(group, sm) {
+function buildCornice(group, sm, doors) {
   for (let k = 0; k < 6; k++) {
-    addWallBox(group, sm.trim, k, WALL_LEN - 0.3, 0.22, 0.42, 0, ROOM_HEIGHT - 0.28, HEX_INRADIUS - 0.12);
+    const nd = HEX_INRADIUS - 0.12;
+    const y = ROOM_HEIGHT - 0.28;
+    if (doors.includes(k)) {
+      const sideW = (WALL_LEN - 0.3 - DOOR_HALF_WIDTH * 2) / 2;
+      const off = DOOR_HALF_WIDTH + sideW / 2 + 0.08;
+      addWallBox(group, sm.trim, k, sideW, 0.22, 0.42, off, y, nd);
+      addWallBox(group, sm.trim, k, sideW, 0.22, 0.42, -off, y, nd);
+    } else {
+      addWallBox(group, sm.trim, k, WALL_LEN - 0.3, 0.22, 0.42, 0, y, nd);
+    }
   }
 }
 
@@ -922,7 +937,7 @@ export function buildRoom(roomData, { crimson = false } = {}) {
   }
 
   buildColumns(group, sm);
-  buildCornice(group, sm);
+  buildCornice(group, sm, crimson ? [] : roomData.doors);
   if (def.beams) buildBeams(group, sm);
 
   if (!crimson) {
@@ -1109,6 +1124,9 @@ export function buildRoom(roomData, { crimson = false } = {}) {
   const cats = createRoomCats(roomData, rng, { crimson });
   for (const cat of cats) group.add(cat.group);
 
+  const flowBeings = createFlowBeings(roomData, rng, { crimson });
+  for (const b of flowBeings) group.add(b.group);
+
   // Owl on a random column capital.
   let owl = null;
   if (!crimson) {
@@ -1216,6 +1234,7 @@ export function buildRoom(roomData, { crimson = false } = {}) {
     wispSeed,
     moths,
     cats,
+    flowBeings,
     owl,
     beetle,
     pages,
@@ -1245,6 +1264,7 @@ export function buildRoom(roomData, { crimson = false } = {}) {
       shaftMat.dispose();
       for (const o of columnOrbs) o.mesh.material.dispose();
       disposeCats(cats);
+      disposeFlowBeings(flowBeings);
       if (owl) disposeCreature(owl.group);
       if (beetle) disposeCreature(beetle.group);
       for (const m of tinted) m.dispose();

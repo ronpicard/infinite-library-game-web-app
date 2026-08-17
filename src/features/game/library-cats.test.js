@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { mulberry32 } from '../../lib/random.js';
 import { HEX_INRADIUS } from '../world/hex.js';
 import { getRoomData } from '../world/room-data.js';
+import { RAIL_RADIUS } from './floor-clamp.js';
 import { clampCatFloor, createRoomCats, disposeCats } from './library-cats.js';
 
-const RAIL_RADIUS = 1.78;
 const CAT_RADIUS = 0.14;
 
 describe('clampCatFloor', () => {

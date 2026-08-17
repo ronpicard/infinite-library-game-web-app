@@ -40,9 +40,10 @@ gallery holding one perfect book on a pedestal.
   oak hall, sandstone vault, marble rotunda, basalt archive, cedar
   scriptorium — with columns, cornices, beams and worn floor mosaics.
 - Library cats wander the floor (one or two per gallery, never in the Crimson
-  Hexagon): they walk, sit, and meow. Owls watch from column capitals; moths
-  circle the lamps; a beetle crawls the void railing; torn pages drift upward
-  like ash.
+  Hexagon): they walk, sit, and meow. Tiny luminous beings ride a slow current
+  around each gallery and drift toward open doorways. Owls watch from column
+  capitals; moths circle the lamps; a beetle crawls the void railing; torn
+  pages drift upward like ash.
 - Sound is synthesized live with Tone.js (sine and triangle tones, no noise
   generators): a low drone, distant echoes, footsteps, page turns, cat meows,
   and quiet cues when the path holds, crumbles, or the lamps turn to embers.

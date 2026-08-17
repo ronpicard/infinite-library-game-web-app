@@ -4,7 +4,6 @@
 
 import * as THREE from 'three';
 import {
-  HEX_INRADIUS,
   axialToWorld,
   worldToAxial,
   roomKey,
@@ -15,16 +14,20 @@ import {
 } from '../world/hex.js';
 import { getRoomData } from '../world/room-data.js';
 import { createQuestState, advanceQuest } from '../world/quest.js';
-import {
-  buildRoom,
-  DOOR_PASS_HALF,
-  RAIL_RADIUS,
-  COLUMN_RADIUS,
-  COLUMN_RING_RADIUS,
-  markedBookMat,
-} from './room-builder.js';
+import { buildRoom, markedBookMat } from './room-builder.js';
 import { updateRoomCats } from './library-cats.js';
+import { updateFlowBeings } from './flow-beings.js';
 import { cinematicOwnsAmbientLights, isLookFrozen } from './cinematic.js';
+import { clampHexFloor, RAIL_RADIUS } from './floor-clamp.js';
+import {
+  EXPOSURE_FOLLOW,
+  LIGHT_FOLLOW,
+  NEIGHBOR_LIGHT,
+  advanceLightBlend,
+  follow,
+  lampFlickerFactor,
+  roomLightWeight,
+} from './lighting.js';
 
 const EYE_HEIGHT = 1.65;
 const PLAYER_RADIUS = 0.32;
@@ -37,21 +40,22 @@ const CRIMSON_LOCK = 1.0;
 const CRIMSON_REVEAL = 1.6;
 const CRIMSON_FOG = new THREE.Color(0x180608);
 const BASE_FOG = new THREE.Color(0x0a0704);
-/** Default is a touch brighter than the original 1.1 baseline. */
-export const DEFAULT_BRIGHTNESS = 1.0;
+/** Default look; pause-menu slider is 0.4–1.6 around this. */
+export const DEFAULT_BRIGHTNESS = 1.18;
 const BASE_EXPOSURE = 1.28;
+const DEFAULT_EXPOSURE = BASE_EXPOSURE * DEFAULT_BRIGHTNESS;
 
 export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = BASE_EXPOSURE;
+  renderer.toneMappingExposure = DEFAULT_EXPOSURE;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0a0704);
   scene.fog = new THREE.FogExp2(0x0a0704, 0.052);
-  scene.add(new THREE.AmbientLight(0x2a1e12, 2.2));
+  scene.add(new THREE.AmbientLight(0x2a1e12, 2.45));
 
   const camera = new THREE.PerspectiveCamera(
     72,
@@ -85,6 +89,11 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
   let bobPhase = 0;
   let bobAmount = 0;
   let wonAt = null; // elapsed time when the crimson book was taken
+  let lightFromKey = null;
+  let lightToKey = null;
+  let lightBlend = 1;
+  let exposureTarget = DEFAULT_EXPOSURE;
+  let exposureNow = DEFAULT_EXPOSURE;
 
   function inputActive() {
     return !paused && !crimsonTransition && (locked || touchMode);
@@ -122,6 +131,8 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
       if (!rooms.has(key)) {
         const [rq, rr] = key.split(',').map(Number);
         const handle = buildRoom(getRoomData(rq, rr), { crimson: key === crimsonKey });
+        const here = key === currentKey;
+        handle.light.intensity = handle.baseIntensity * (here ? 1 : NEIGHBOR_LIGHT);
         scene.add(handle.group);
         rooms.set(key, handle);
       }
@@ -209,6 +220,14 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
     const key = roomKey(q, r);
     const prevKey = currentKey;
     currentKey = key;
+    if (prevKey && prevKey !== key) {
+      lightFromKey = prevKey;
+      lightToKey = key;
+      lightBlend = 0;
+    } else {
+      lightToKey = key;
+      lightBlend = 1;
+    }
     ensureRooms(q, r);
     visited.add(key);
 
@@ -326,8 +345,8 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
   // ------------------------------------------------------------- physics
   function collide(pos, roomQ, roomR) {
     const center = axialToWorld(roomQ, roomR);
-    let relX = pos.x - center.x;
-    let relZ = pos.z - center.z;
+    const relX = pos.x - center.x;
+    const relZ = pos.z - center.z;
     const keyHere = roomKey(roomQ, roomR);
     const room = rooms.get(keyHere);
     const isCrimson = keyHere === crimsonKey;
@@ -335,46 +354,13 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
       isCrimson ||
       (crimsonTransition && keyHere === crimsonTransition.key);
     const doors = sealed ? [] : room ? room.data.doors : getRoomData(roomQ, roomR).doors;
-
-    // Central obstacle: void railing, or the pedestal in the Crimson Hexagon.
-    const coreR = (isCrimson ? 0.75 : RAIL_RADIUS) + PLAYER_RADIUS;
-    const centerDist = Math.hypot(relX, relZ);
-    if (centerDist < coreR && centerDist > 1e-4) {
-      const push = coreR / centerDist;
-      relX *= push;
-      relZ *= push;
-    }
-
-    for (let d = 0; d < 6; d++) {
-      const n = dirUnitVector(d);
-      const along = relX * n.x + relZ * n.z;
-      const isDoor = doors.includes(d);
-      // Shelves protrude ~0.9m; doorway collision stops short of the frame posts.
-      const limit = HEX_INRADIUS - (isDoor ? 0.28 : 0.95) - PLAYER_RADIUS;
-      if (along <= limit) continue;
-      const lateral = relX * -n.z + relZ * n.x;
-      if (isDoor && Math.abs(lateral) < DOOR_PASS_HALF - PLAYER_RADIUS) continue;
-      relX -= n.x * (along - limit);
-      relZ -= n.z * (along - limit);
-    }
-
-    // Columns at the hex vertices.
-    const colR = COLUMN_RADIUS + PLAYER_RADIUS;
-    for (let k = 0; k < 6; k++) {
-      const a = (Math.PI / 3) * k;
-      const cx = Math.cos(a) * COLUMN_RING_RADIUS;
-      const cz = Math.sin(a) * COLUMN_RING_RADIUS;
-      const dx = relX - cx;
-      const dz = relZ - cz;
-      const dist = Math.hypot(dx, dz);
-      if (dist < colR && dist > 1e-4) {
-        relX = cx + (dx / dist) * colR;
-        relZ = cz + (dz / dist) * colR;
-      }
-    }
-
-    pos.x = center.x + relX;
-    pos.z = center.z + relZ;
+    const clamped = clampHexFloor(relX, relZ, {
+      doors,
+      radius: PLAYER_RADIUS,
+      coreRadius: isCrimson ? 0.75 : RAIL_RADIUS,
+    });
+    pos.x = center.x + clamped.x;
+    pos.z = center.z + clamped.z;
   }
 
   function updateMovement(dt) {
@@ -537,6 +523,10 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
     updateHover();
     updateFacing();
 
+    lightBlend = advanceLightBlend(lightBlend, dt);
+    exposureNow = follow(exposureNow, exposureTarget, dt, EXPOSURE_FOLLOW);
+    renderer.toneMappingExposure = exposureNow;
+
     const cinematicLights = cinematicOwnsAmbientLights(crimsonTransition);
     for (const h of rooms.values()) {
       const f = h.data.seed % 97;
@@ -544,9 +534,10 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
       // Lamp flicker, breathing at a per-room rate. Skip during arrival so
       // the cinematic pulse is not overwritten the same frame.
       if (!cinematicLights) {
-        h.light.intensity =
-          h.baseIntensity *
-          (1 + 0.06 * Math.sin(elapsed * 7.3 * fs + f) * Math.sin(elapsed * 2.9 * fs + f * 2));
+        const keyHere = roomKey(h.data.q, h.data.r);
+        const w = roomLightWeight(keyHere, lightToKey, lightFromKey, lightBlend);
+        const target = h.baseIntensity * lampFlickerFactor(elapsed, f, fs) * w;
+        h.light.intensity = follow(h.light.intensity, target, dt, LIGHT_FOLLOW);
       }
       // Dust drift.
       const pos = h.dust.points.geometry.attributes.position;
@@ -657,6 +648,10 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
         updateRoomCats(h.cats, dt, elapsed, h.data, (colorIdx) => {
           if (roomKeyHere === currentKey) callbacks.onCatMeow?.(colorIdx);
         });
+      }
+
+      if (h.flowBeings?.length) {
+        updateFlowBeings(h.flowBeings, elapsed, h.data.doors);
       }
 
       // Owl: head turns, blinks via scale.
@@ -770,7 +765,7 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
     /** Brightness multiplier; 1 = default (slightly brighter than the original look). */
     setBrightness(value) {
       const b = Math.max(0.4, Math.min(1.6, value));
-      renderer.toneMappingExposure = BASE_EXPOSURE * b;
+      exposureTarget = BASE_EXPOSURE * b;
     },
     /** Virtual joystick input: x strafe, z forward, each in [-1, 1]. */
     setMoveInput(x, z) {

@@ -3,13 +3,12 @@
 
 import * as THREE from 'three';
 import { mulberry32, hashInts } from '../../lib/random.js';
-import { HEX_INRADIUS, HEX_RADIUS, dirUnitVector } from '../world/hex.js';
+import { HEX_INRADIUS } from '../world/hex.js';
+import {
+  RAIL_RADIUS,
+  clampHexFloor,
+} from './floor-clamp.js';
 
-// Match room-builder collision radii (avoid circular imports).
-const RAIL_RADIUS = 1.78;
-const DOOR_PASS_HALF = 0.92;
-const COLUMN_RADIUS = 0.3;
-const COLUMN_RING_RADIUS = HEX_RADIUS - 0.62;
 const CAT_RADIUS = 0.14;
 
 const CAT_COLORS = [
@@ -25,44 +24,11 @@ const CAT_COLORS = [
 
 /** Keep a cat on walkable floor: outside the void, inside walls, around columns. */
 export function clampCatFloor(x, z, roomData) {
-  let relX = x;
-  let relZ = z;
-
-  const coreR = RAIL_RADIUS + CAT_RADIUS;
-  const centerDist = Math.hypot(relX, relZ);
-  if (centerDist < coreR && centerDist > 1e-4) {
-    const push = coreR / centerDist;
-    relX *= push;
-    relZ *= push;
-  }
-
-  for (let d = 0; d < 6; d++) {
-    const n = dirUnitVector(d);
-    const along = relX * n.x + relZ * n.z;
-    const isDoor = roomData.doors.includes(d);
-    const limit = HEX_INRADIUS - (isDoor ? 0.28 : 0.95) - CAT_RADIUS;
-    if (along <= limit) continue;
-    const lateral = relX * -n.z + relZ * n.x;
-    if (isDoor && Math.abs(lateral) < DOOR_PASS_HALF - CAT_RADIUS) continue;
-    relX -= n.x * (along - limit);
-    relZ -= n.z * (along - limit);
-  }
-
-  for (let k = 0; k < 6; k++) {
-    const a = (Math.PI / 3) * k;
-    const cx = Math.cos(a) * COLUMN_RING_RADIUS;
-    const cz = Math.sin(a) * COLUMN_RING_RADIUS;
-    const dx = relX - cx;
-    const dz = relZ - cz;
-    const dist = Math.hypot(dx, dz);
-    const colR = COLUMN_RADIUS + CAT_RADIUS;
-    if (dist < colR && dist > 1e-4) {
-      relX = cx + (dx / dist) * colR;
-      relZ = cz + (dz / dist) * colR;
-    }
-  }
-
-  return { x: relX, z: relZ };
+  return clampHexFloor(x, z, {
+    doors: roomData.doors,
+    radius: CAT_RADIUS,
+    coreRadius: RAIL_RADIUS,
+  });
 }
 
 function pickFloorPoint(rng, roomData) {
