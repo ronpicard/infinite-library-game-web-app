@@ -23,11 +23,15 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
+        // Force the full Chromium build (not chrome-headless-shell) so that
+        // Three.js can create a WebGL2 context via SwiftShader in CI.
+        channel: 'chromium',
         launchOptions: {
           args: [
             '--ignore-gpu-blocklist',
             '--use-gl=angle',
             '--use-angle=swiftshader',
+            '--enable-webgl',
           ],
         },
       },
