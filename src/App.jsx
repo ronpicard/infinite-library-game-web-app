@@ -301,7 +301,7 @@ export default function App() {
         <MysteryCutscene
           revelation={mystery.revelation}
           step={mystery.step}
-          of={PATH_LENGTH - 1}
+          of={PATH_LENGTH}
           onContinue={closeMystery}
           touch={IS_TOUCH}
         />

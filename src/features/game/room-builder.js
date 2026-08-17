@@ -729,6 +729,28 @@ const spiritMat = new THREE.MeshBasicMaterial({
   side: THREE.DoubleSide,
 });
 
+/** Drop per-creature geos/mats; skip shared spiritMat. */
+function disposeCreature(group) {
+  const seenGeo = new Set();
+  const seenMat = new Set([spiritMat]);
+  group.traverse((obj) => {
+    if (obj.geometry && !seenGeo.has(obj.geometry)) {
+      seenGeo.add(obj.geometry);
+      obj.geometry.dispose();
+    }
+    const mats = obj.material
+      ? Array.isArray(obj.material)
+        ? obj.material
+        : [obj.material]
+      : [];
+    for (const m of mats) {
+      if (!m || seenMat.has(m)) continue;
+      seenMat.add(m);
+      m.dispose();
+    }
+  });
+}
+
 function buildOwl() {
   const g = new THREE.Group();
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), spiritMat);
@@ -1208,7 +1230,6 @@ export function buildRoom(roomData, { crimson = false } = {}) {
       books.dispose();
       marked.mesh?.dispose();
       marked.ribbons?.dispose();
-      markedBookMat.dispose();
       dust.points.geometry.dispose();
       dust.points.material.dispose();
       glyphs.points.geometry.dispose();
@@ -1224,6 +1245,8 @@ export function buildRoom(roomData, { crimson = false } = {}) {
       shaftMat.dispose();
       for (const o of columnOrbs) o.mesh.material.dispose();
       disposeCats(cats);
+      if (owl) disposeCreature(owl.group);
+      if (beetle) disposeCreature(beetle.group);
       for (const m of tinted) m.dispose();
     },
   };

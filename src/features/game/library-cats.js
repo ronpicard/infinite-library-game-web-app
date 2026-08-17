@@ -231,8 +231,14 @@ export function updateRoomCats(cats, dt, elapsed, roomData, onMeow) {
 }
 
 export function disposeCats(cats) {
+  const seenGeo = new Set();
   for (const cat of cats) {
     cat.mat.dispose();
     cat.noseMat.dispose();
+    cat.group.traverse((obj) => {
+      if (!obj.geometry || seenGeo.has(obj.geometry)) return;
+      seenGeo.add(obj.geometry);
+      obj.geometry.dispose();
+    });
   }
 }

@@ -1,6 +1,8 @@
 // One-shot mystery revelations unlocked by quest progress.
 // Each step of the path speaks once per session; a path reset never repeats them.
 
+import { PATH_LENGTH } from './quest.js';
+
 /** @type {Record<number, { eyebrow: string, title: string, lines: string[] }>} */
 export const PATH_REVELATIONS = {
   1: {
@@ -40,4 +42,9 @@ export const PATH_REVELATIONS = {
 /** Revelation for a progress step, or null if none. */
 export function revelationForProgress(progress) {
   return PATH_REVELATIONS[progress] ?? null;
+}
+
+/** Cutscene counter: "1 of 5", matching the HUD path dots. */
+export function mysteryProgressLabel(step, of = PATH_LENGTH) {
+  return `${step} of ${of}`;
 }

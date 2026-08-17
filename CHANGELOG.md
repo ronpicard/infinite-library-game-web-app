@@ -14,3 +14,12 @@
 - Only marked volumes (pale glowing spines with silk ribbons) can be opened.
 - Typically one or two readable books per gallery (a clue plus an optional aphorism); the origin room also holds the intro letter.
 - Audio uses sine and triangle tones only (no noise generators); page turns are plucked notes, and cats meow.
+
+### Fixed
+
+- Marked volumes no longer lose their shared material when a neighboring gallery streams out.
+- Crimson arrival lamp pulse is no longer overwritten by the ambient flicker the same frame.
+- Touch look is frozen during the arrival cinematic, matching mouse look.
+- Double-clicking Enter the Library no longer starts two audio graphs.
+- Cat, owl, and beetle geometries are disposed when a gallery unloads.
+- Path revelation cutscenes count "N of 5", matching the HUD.

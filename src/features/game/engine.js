@@ -24,6 +24,7 @@ import {
   markedBookMat,
 } from './room-builder.js';
 import { updateRoomCats } from './library-cats.js';
+import { cinematicOwnsAmbientLights, isLookFrozen } from './cinematic.js';
 
 const EYE_HEIGHT = 1.65;
 const PLAYER_RADIUS = 0.32;
@@ -225,7 +226,7 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
 
   // ------------------------------------------------------------- input
   function onMouseMove(e) {
-    if (!locked || paused || crimsonTransition) return;
+    if (!locked || isLookFrozen(paused, crimsonTransition)) return;
     yaw -= e.movementX * 0.0021;
     pitch -= e.movementY * 0.0021;
     pitch = Math.max(-1.45, Math.min(1.45, pitch));
@@ -243,7 +244,7 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
   }
 
   function onCanvasClick() {
-    if (paused || disposed || touchMode) return;
+    if (disposed || touchMode || isLookFrozen(paused, crimsonTransition)) return;
     if (!locked) {
       canvas.requestPointerLock();
     } else if (hovered) {
@@ -262,7 +263,7 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
   let touchStartTime = 0;
 
   function onTouchStart(e) {
-    if (paused || lookTouchId !== null) return;
+    if (isLookFrozen(paused, crimsonTransition) || lookTouchId !== null) return;
     const t = e.changedTouches[0];
     lookTouchId = t.identifier;
     lastTouchX = touchStartX = t.clientX;
@@ -272,7 +273,7 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
   }
 
   function onTouchMove(e) {
-    if (paused || lookTouchId === null) return;
+    if (isLookFrozen(paused, crimsonTransition) || lookTouchId === null) return;
     for (const t of e.changedTouches) {
       if (t.identifier !== lookTouchId) continue;
       yaw -= (t.clientX - lastTouchX) * TOUCH_LOOK_SENSITIVITY;
@@ -291,7 +292,9 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
       const wasTap =
         performance.now() - touchStartTime < 350 &&
         Math.hypot(t.clientX - touchStartX, t.clientY - touchStartY) < 12;
-      if (wasTap && !paused && hovered) callbacks.onOpenBook(hovered);
+      if (wasTap && !isLookFrozen(paused, crimsonTransition) && hovered) {
+        callbacks.onOpenBook(hovered);
+      }
     }
   }
 
@@ -534,13 +537,17 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
     updateHover();
     updateFacing();
 
+    const cinematicLights = cinematicOwnsAmbientLights(crimsonTransition);
     for (const h of rooms.values()) {
       const f = h.data.seed % 97;
       const fs = h.data.flickerSpeed;
-      // Lamp flicker, breathing at a per-room rate.
-      h.light.intensity =
-        h.baseIntensity *
-        (1 + 0.06 * Math.sin(elapsed * 7.3 * fs + f) * Math.sin(elapsed * 2.9 * fs + f * 2));
+      // Lamp flicker, breathing at a per-room rate. Skip during arrival so
+      // the cinematic pulse is not overwritten the same frame.
+      if (!cinematicLights) {
+        h.light.intensity =
+          h.baseIntensity *
+          (1 + 0.06 * Math.sin(elapsed * 7.3 * fs + f) * Math.sin(elapsed * 2.9 * fs + f * 2));
+      }
       // Dust drift.
       const pos = h.dust.points.geometry.attributes.position;
       const { base, phase } = h.dust;
@@ -552,9 +559,12 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
       pos.needsUpdate = true;
 
       // Warding circles revolve (floor and ceiling in opposition); the void
-      // shaft breathes; the doorway seals pulse slowly.
-      h.runeRing.rotation.z = elapsed * h.runeSpin;
-      h.innerRing.rotation.z = elapsed * h.innerSpin;
+      // shaft breathes; the doorway seals pulse slowly. Floor rings are driven
+      // by the arrival cinematic while it owns the lights.
+      if (!cinematicLights) {
+        h.runeRing.rotation.z = elapsed * h.runeSpin;
+        h.innerRing.rotation.z = elapsed * h.innerSpin;
+      }
       h.ceilRing.rotation.z = -elapsed * h.runeSpin * 1.4;
       h.shaft.material.opacity = 0.035 + 0.025 * (1 + Math.sin(elapsed * 0.45 + f));
       for (const sig of h.sigils) {

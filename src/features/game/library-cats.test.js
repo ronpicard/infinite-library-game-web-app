@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { mulberry32 } from '../../lib/random.js';
 import { HEX_INRADIUS } from '../world/hex.js';
 import { getRoomData } from '../world/room-data.js';
-import { clampCatFloor } from './library-cats.js';
+import { clampCatFloor, createRoomCats, disposeCats } from './library-cats.js';
 
 const RAIL_RADIUS = 1.78;
 const CAT_RADIUS = 0.14;
@@ -32,5 +33,32 @@ describe('clampCatFloor', () => {
     const twice = clampCatFloor(once.x, once.z, room);
     expect(twice.x).toBeCloseTo(once.x);
     expect(twice.z).toBeCloseTo(once.z);
+  });
+});
+
+describe('createRoomCats and disposeCats', () => {
+  it('skips the Crimson Hexagon', () => {
+    const cats = createRoomCats(getRoomData(0, 0), mulberry32(1), { crimson: true });
+    expect(cats).toEqual([]);
+  });
+
+  it('spawns one or two cats and disposes their unique resources', () => {
+    const cats = createRoomCats(getRoomData(0, 0), mulberry32(1));
+    expect(cats.length).toBeGreaterThanOrEqual(1);
+    expect(cats.length).toBeLessThanOrEqual(2);
+
+    const geos = new Set();
+    cats[0].group.traverse((obj) => {
+      if (obj.geometry) geos.add(obj.geometry);
+    });
+    let geoDisposed = 0;
+    let matDisposed = 0;
+    for (const geo of geos) geo.addEventListener('dispose', () => { geoDisposed += 1; });
+    cats[0].mat.addEventListener('dispose', () => { matDisposed += 1; });
+    cats[0].noseMat.addEventListener('dispose', () => { matDisposed += 1; });
+
+    disposeCats(cats);
+    expect(matDisposed).toBe(2);
+    expect(geoDisposed).toBe(geos.size);
   });
 });

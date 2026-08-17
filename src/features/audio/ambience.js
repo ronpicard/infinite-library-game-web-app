@@ -2,6 +2,7 @@
 // generators. Created lazily after the first user gesture (WebAudio policy).
 
 import * as Tone from 'tone';
+import { onceAsync } from '../../lib/once-async.js';
 
 let ctx = null;
 
@@ -149,10 +150,14 @@ async function build() {
   };
 }
 
-/** Idempotent init; safe to call on every user gesture. */
-export async function initAudio() {
-  if (!ctx) ctx = await build();
+const startAudio = onceAsync(async () => {
+  ctx = await build();
   return ctx;
+});
+
+/** Idempotent init; concurrent calls share one in-flight graph. */
+export async function initAudio() {
+  return startAudio();
 }
 
 export function getAudio() {

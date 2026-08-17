@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { mysteryProgressLabel } from '../world/index.js';
 
 /** Full-screen mystery beat unlocked by path progress. Click / tap / Enter to continue. */
 export default function MysteryCutscene({ revelation, step, of, onContinue, touch }) {
@@ -38,7 +39,7 @@ export default function MysteryCutscene({ revelation, step, of, onContinue, touc
           {revelation.eyebrow}
           <span className="mystery-cutscene-step">
             {' '}
-            · {step} of {of}
+            · {mysteryProgressLabel(step, of)}
           </span>
         </p>
         <h2 className="mystery-cutscene-title">{revelation.title}</h2>
