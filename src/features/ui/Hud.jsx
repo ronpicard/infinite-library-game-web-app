@@ -10,12 +10,13 @@ export default function Hud({
   toast,
 }) {
   return (
-    <div className="hud">
+    <div className="hud" data-testid="hud">
       {showCrosshair && <div className="crosshair" />}
 
       <div className="hud-top">
         <div className="hud-facing">
-          facing — <em>{facingName}</em>
+          <span className="hud-facing-label">facing</span>
+          <em className="hud-facing-direction">{facingName}</em>
         </div>
         <div className="hud-path" title="the way to the Crimson Hexagon">
           {Array.from({ length: PATH_LENGTH }, (_, i) => (
@@ -30,7 +31,7 @@ export default function Hud({
         <span>{stats.fragments} legible fragments</span>
       </div>
 
-      {showInteract && <div className="hud-interact">read marked volume — E</div>}
+      {showInteract && <div className="hud-interact">read — E</div>}
 
       {showResumeHint && <div className="hud-resume">click to walk again</div>}
 

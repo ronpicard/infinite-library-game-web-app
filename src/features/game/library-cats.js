@@ -9,7 +9,8 @@ import {
   clampHexFloor,
 } from './floor-clamp.js';
 
-const CAT_RADIUS = 0.14;
+const CAT_SCALE = 1.8;
+const CAT_RADIUS = 0.14 * CAT_SCALE;
 
 const CAT_COLORS = [
   0xc97830, // orange tabby
@@ -88,6 +89,7 @@ function buildLibraryCat(furColor) {
     legs.push(leg);
   }
 
+  g.scale.setScalar(CAT_SCALE);
   return { group: g, head, tail, legs, mat, noseMat };
 }
 

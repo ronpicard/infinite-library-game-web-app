@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DIRECTION_NAMES, neighbor } from './hex.js';
+import { DIRECTION_NAMES, neighbor, oppositeDir } from './hex.js';
 import { isDoorOpen, openDoors } from './room-data.js';
 import {
   PATH_LENGTH,
@@ -52,7 +52,56 @@ describe('computePath', () => {
   });
 });
 
+describe('createQuestState', () => {
+  it('starts at the first step of that room\'s clue path', () => {
+    const state = createQuestState(0, 0);
+    expect(state.progress).toBe(0);
+    expect(state.complete).toBe(false);
+    expect(state.expectedDir).toBe(computePath(0, 0)[0]);
+    expect(state.expectedDir).toBe(stepDirection(0, 0, 0, null));
+  });
+});
+
+describe('stepDirection', () => {
+  it('returns -1 and an empty path in a sealed room', () => {
+    let sealed = null;
+    for (let q = -20; q <= 20 && !sealed; q++) {
+      for (let r = -20; r <= 20 && !sealed; r++) {
+        if (openDoors(q, r).length === 0) sealed = { q, r };
+      }
+    }
+    expect(sealed).not.toBeNull();
+    expect(stepDirection(sealed.q, sealed.r, 0, null)).toBe(-1);
+    expect(computePath(sealed.q, sealed.r)).toEqual([]);
+  });
+
+  it('does not reverse the previous step unless the room is a dead end', () => {
+    for (let q = -8; q <= 8; q++) {
+      for (let r = -8; r <= 8; r++) {
+        const doors = openDoors(q, r);
+        if (doors.length < 2) continue;
+        for (const entry of doors) {
+          expect(stepDirection(q, r, 1, entry)).not.toBe(oppositeDir(entry));
+        }
+      }
+    }
+  });
+});
+
 describe('advanceQuest', () => {
+  it('emits advanced for each of the first four steps, then arrived', () => {
+    const state = createQuestState(0, 0);
+    const path = computePath(0, 0);
+    let cur = { q: 0, r: 0 };
+    const types = [];
+    for (const d of path) {
+      cur = neighbor(cur.q, cur.r, d);
+      types.push(advanceQuest(state, d, cur.q, cur.r).type);
+    }
+    expect(types).toEqual(['advanced', 'advanced', 'advanced', 'advanced', 'arrived']);
+    expect(state.progress).toBe(PATH_LENGTH);
+  });
+
   it('completes after walking the origin clue path', () => {
     const state = createQuestState(0, 0);
     const { last } = walkPath(0, 0, computePath(0, 0), state);

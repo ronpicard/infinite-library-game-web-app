@@ -8,27 +8,6 @@ import { pathDirectionNames, PATH_LENGTH } from '../world/quest.js';
 // Borges gives the Library twenty-two letters, the comma and the period.
 const ALPHABET = 'abcdefghijklmnopqrstuvyz';
 
-const APHORISMS = [
-  'The lamp does not ask what it illuminates.',
-  'Every gallery believes itself the center; every center is a rumor.',
-  'A shelf remembers the hand longer than the hand remembers the shelf.',
-  'What cannot be found has merely not been lost correctly.',
-  'The dust is patient. It has read everything.',
-  'To walk in one direction forever is also a kind of prayer.',
-  'Somewhere a book describes this exact moment, and gets it wrong.',
-  'The librarians grew old counting doors. The doors did not count them.',
-  'Meaning is the rarest element. It decays into letters.',
-  'Do not pity the gibberish. It is speech awaiting its language.',
-  'Two mirrors face each other in every void: above, below, neither first.',
-  'He who finds one true sentence has already been paid for his life.',
-  'The stairs go up and the stairs go down and both arrive here.',
-  'A door refused is a wall earned.',
-  'Order is only the name we give to the corridor we happened to take.',
-  'The Library does not end. The reader does. This is the arrangement.',
-  'Whole shelves argue about a word no one alive has spoken.',
-  'Listen: even the echoes here are quotations.',
-];
-
 const CLUE_OPENINGS = [
   'I was a cataloguer of impossible rooms, and this page is my confession.',
   'Ninety years I walked, and the walking wrote this book through me.',
@@ -103,17 +82,6 @@ function clueBody(seed, q, r) {
 
 const ORDINALS = ['First', 'Then', 'Third', 'Fourth', 'Last'];
 
-const INTRO_BODY =
-  'To the one who opens this instead of any of the trillion others: it was not chance.\n\n' +
-  'The old librarians spoke of the Crimson Hexagon — a gallery lit red, holding a single ' +
-  'book that is entirely true. Every other volume in every other room is noise, or nearly so.\n\n' +
-  'But the Library leaves a trail for the patient. Among the endless dark spines a few glimmer: ' +
-  'the gilt ones will open, though they speak mostly noise; the pale ones remember language. ' +
-  'Seek the pale spines. They will name the way, gallery by gallery, ' +
-  'in the old compass of this place: dust and lamp, water and ash, frost and the red wind. ' +
-  'Face a doorway and the compass will whisper its name to you.\n\n' +
-  'Walk the way without error. Five thresholds, and the light will change.';
-
 const CRIMSON_TITLE = 'The Book of Sand and Certainty';
 const CRIMSON_BODY =
   'You expect revelation. The page gives you an inventory.\n\n' +
@@ -126,8 +94,7 @@ const CRIMSON_BODY =
 
 /**
  * Content for the book at `index` in room (q, r).
- * Returns { title, body, kind } with kind in
- * 'gibberish' | 'aphorism' | 'clue' | 'intro'.
+ * Returns { title, body, kind } with kind in 'gibberish' | 'clue' | 'crimson'.
  */
 export function getBookContent(q, r, index) {
   const room = getRoomData(q, r);
@@ -137,21 +104,7 @@ export function getBookContent(q, r, index) {
   if (!special) {
     return { title: gibberishTitle(seed), body: gibberishPage(seed ^ 0x51), kind: 'gibberish' };
   }
-  if (special.kind === 'clue') {
-    return { title: 'An Account of the Way', body: clueBody(seed, q, r), kind: 'clue' };
-  }
-  if (special.kind === 'intro') {
-    return { title: 'A Letter Left on Purpose', body: INTRO_BODY, kind: 'intro' };
-  }
-  const aphorism = APHORISMS[special.variant % APHORISMS.length];
-  // An aphorism book is one legible sentence adrift in noise.
-  const before = gibberishPage(seed ^ 0xa1, 380);
-  const after = gibberishPage(seed ^ 0xa2, 380);
-  return {
-    title: gibberishTitle(seed ^ 0xa3),
-    body: `${before}\n\n${aphorism}\n\n${after}`,
-    kind: 'aphorism',
-  };
+  return { title: 'An Account of the Way', body: clueBody(seed, q, r), kind: 'clue' };
 }
 
 export function getCrimsonBookContent() {

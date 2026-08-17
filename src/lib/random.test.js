@@ -55,5 +55,12 @@ describe('pickHashed', () => {
     expect(pickHashed(arr, 0)).toBe('a');
     expect(pickHashed(arr, 1)).toBe('b');
     expect(pickHashed(arr, 5)).toBe('c');
+    expect(pickHashed(arr, 3)).toBe('a');
+  });
+});
+
+describe('mulberry32 divergence', () => {
+  it('does not share a first value across nearby seeds', () => {
+    expect(mulberry32(1)()).not.toBe(mulberry32(2)());
   });
 });

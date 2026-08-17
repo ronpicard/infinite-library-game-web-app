@@ -9,12 +9,15 @@
 - Pause-menu brightness control.
 - Gallery life and atmosphere: owl on a column, moths around the lamps, beetle on the void railing, wandering wisp, drifting pages, and sparkles orbiting marked volumes.
 - Tiny luminous beings (five to eight per gallery) that flow around the room and drift toward open doorways.
+- Unique seeded patterns on each gallery's floor and walls (tiles, flagstone, brick, glyphs, and the like).
 
 ### Changed
 
 - Only marked volumes (pale glowing spines with silk ribbons) can be opened.
-- Typically one or two readable books per gallery (a clue plus an optional aphorism); the origin room also holds the intro letter.
+- Exactly one readable clue book per gallery — the only volume you can open.
 - Audio uses sine and triangle tones only (no noise generators); page turns are plucked notes, and cats meow.
+- Ancient gallery palettes are vibrant purple and blue (amethyst, lapis, indigo, midnight, cobalt) instead of oak and sandstone.
+- Default brightness is higher (pause slider starts at 152).
 
 ### Fixed
 
@@ -27,4 +30,4 @@
 - Taking the Crimson book opens the ending overlay immediately; it no longer shows "click to walk again" first.
 - Doorways are wider, with inset posts and rounded jamb collision so walking through no longer clips the frames.
 - Gallery lamps crossfade between rooms and flicker more softly; brightness changes ease instead of jumping.
-- Default brightness is a little higher (pause slider starts at 118).
+- Door frames no longer overlap into the passage: each gallery builds a half-thickness frame on the outer edge band, posts sit above a raised sill, and the floor threshold stays clear.

@@ -17,7 +17,21 @@ import { createQuestState, advanceQuest } from '../world/quest.js';
 import { buildRoom, markedBookMat } from './room-builder.js';
 import { updateRoomCats } from './library-cats.js';
 import { updateFlowBeings } from './flow-beings.js';
-import { cinematicOwnsAmbientLights, isLookFrozen } from './cinematic.js';
+import {
+  CRIMSON_FOG_DENSITY,
+  CRIMSON_TOTAL,
+  cinematicOwnsAmbientLights,
+  crimsonCameraSway,
+  crimsonEmberIntensity,
+  crimsonFogDensity,
+  crimsonLightMultiplier,
+  crimsonRevealT,
+  crimsonRoomScale,
+  crimsonRuneSpin,
+  crimsonShouldTransform,
+  crimsonTransitionU,
+  isLookFrozen,
+} from './cinematic.js';
 import { clampHexFloor, RAIL_RADIUS } from './floor-clamp.js';
 import {
   EXPOSURE_FOLLOW,
@@ -36,12 +50,10 @@ const SPRINT_SPEED = 5.0;
 const INTERACT_RANGE = 3.4;
 const STEP_LENGTH = 1.25; // meters walked per footstep sound
 const TOUCH_LOOK_SENSITIVITY = 0.0052;
-const CRIMSON_LOCK = 1.0;
-const CRIMSON_REVEAL = 1.6;
-const CRIMSON_FOG = new THREE.Color(0x180608);
+const CRIMSON_FOG = new THREE.Color(0x401820);
 const BASE_FOG = new THREE.Color(0x0a0704);
-/** Default look; pause-menu slider is 0.4–1.6 around this. */
-export const DEFAULT_BRIGHTNESS = 1.18;
+/** Default look; pause-menu slider is 0.4–1.8 around this. */
+export const DEFAULT_BRIGHTNESS = 1.52;
 const BASE_EXPOSURE = 1.28;
 const DEFAULT_EXPOSURE = BASE_EXPOSURE * DEFAULT_BRIGHTNESS;
 
@@ -54,8 +66,8 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0a0704);
-  scene.fog = new THREE.FogExp2(0x0a0704, 0.052);
-  scene.add(new THREE.AmbientLight(0x2a1e12, 2.45));
+  scene.fog = new THREE.FogExp2(0x0a0704, 0.04);
+  scene.add(new THREE.AmbientLight(0x3a2c1c, 3.35));
 
   const camera = new THREE.PerspectiveCamera(
     72,
@@ -97,10 +109,6 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
 
   function inputActive() {
     return !paused && !crimsonTransition && (locked || touchMode);
-  }
-
-  function easeInOut(t) {
-    return t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
   }
 
   const raycaster = new THREE.Raycaster();
@@ -173,14 +181,16 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
     if (!crimsonTransition) return;
     crimsonTransition.elapsed += dt;
     const t = crimsonTransition.elapsed;
-    const total = CRIMSON_LOCK + CRIMSON_REVEAL;
-    const u = easeInOut(Math.min(1, t / total));
+    const u = crimsonTransitionU(t);
+    const revealT = crimsonRevealT(t);
 
     tmpColor.copy(BASE_FOG).lerp(CRIMSON_FOG, u);
     scene.fog.color.copy(tmpColor);
     scene.background.copy(tmpColor);
+    const targetDensity = crimsonFogDensity(u);
+    scene.fog.density = follow(scene.fog.density, targetDensity, dt, 5);
 
-    if (t >= CRIMSON_LOCK && !crimsonTransition.transformed) {
+    if (crimsonShouldTransform(t, crimsonTransition.transformed)) {
       crimsonTransition.transformed = true;
       rebuildAsCrimson(crimsonTransition.key);
       callbacks.onCrimsonReveal?.();
@@ -188,27 +198,27 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
 
     const handle = rooms.get(crimsonTransition.key);
     if (handle) {
-      if (t >= CRIMSON_LOCK) {
-        const revealT = Math.min(1, (t - CRIMSON_LOCK) / CRIMSON_REVEAL);
-        const pulse = 1 + 0.04 * Math.sin(revealT * Math.PI * 6) * (1 - revealT);
-        handle.group.scale.setScalar(pulse);
-        handle.light.intensity =
-          handle.baseIntensity * (1.2 + 0.8 * Math.sin(revealT * Math.PI * 4));
-        handle.runeRing.rotation.z += dt * 2.5;
-        handle.innerRing.rotation.z -= dt * 3.8;
-      } else {
-        const lockPulse = 0.5 + 0.5 * Math.sin(t * 14);
-        handle.light.intensity = handle.baseIntensity * (0.7 + lockPulse * 0.5);
+      const lightTarget = handle.baseIntensity * crimsonLightMultiplier(t);
+      handle.light.intensity = follow(handle.light.intensity, lightTarget, dt, 10);
+
+      if (revealT > 0) {
+        const scaleTarget = crimsonRoomScale(revealT);
+        const scaleNow = handle.group.scale.x;
+        const scaleNext = follow(scaleNow, scaleTarget, dt, 7);
+        handle.group.scale.setScalar(scaleNext);
+
+        const spin = crimsonRuneSpin(t, revealT);
+        handle.runeRing.rotation.z += dt * spin.outer;
+        handle.innerRing.rotation.z += dt * spin.inner;
+
+        if (handle.ember) {
+          const emberTarget = crimsonEmberIntensity(revealT);
+          handle.ember.intensity = follow(handle.ember.intensity, emberTarget, dt, 8);
+        }
       }
     }
 
-    if (t < CRIMSON_LOCK + CRIMSON_REVEAL * 0.85) {
-      const shake = (1 - u) * 0.035 * Math.sin(t * 38);
-      camera.position.x += shake;
-      camera.position.z += shake * 0.6;
-    }
-
-    if (t >= total) {
+    if (t >= CRIMSON_TOTAL) {
       if (handle) handle.group.scale.setScalar(1);
       crimsonTransition = null;
       callbacks.onCrimsonTransitionEnd?.();
@@ -403,21 +413,14 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
   }
 
   // ------------------------------------------------------------- hover
-  const MARKED_BASE = [
-    new THREE.Color(0xfff4dc),
-    new THREE.Color(0xffe8a8),
-    new THREE.Color(0xc8e8dc),
-  ];
+  const MARKED_BASE = new THREE.Color(0xfff4dc);
 
   function setHoverHighlight(target) {
     if (hovered && hovered.room && hovered.markedInstance !== undefined) {
       const h = rooms.get(hovered.room);
       if (h?.markedBooks) {
         const i = hovered.markedInstance;
-        const kind = h.data.coherent.get(h.markedIndexMap[i])?.kind;
-        const base =
-          kind === 'intro' ? MARKED_BASE[1] : kind === 'aphorism' ? MARKED_BASE[2] : MARKED_BASE[0];
-        h.markedBooks.setColorAt(i, base);
+        h.markedBooks.setColorAt(i, MARKED_BASE);
         h.markedBooks.instanceColor.needsUpdate = true;
       }
     }
@@ -452,10 +455,12 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
       const hit = hits[0];
       for (const [key, h] of rooms) {
         if (h.markedBooks === hit.object) {
+          const index = h.markedIndexMap[hit.instanceId];
           next = {
             room: key,
             markedInstance: hit.instanceId,
-            index: h.markedIndexMap[hit.instanceId],
+            index,
+            kind: h.data.coherent.get(index)?.kind,
           };
           break;
         }
@@ -512,9 +517,19 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
 
     const axial = worldToAxial(player.x, player.z);
     const key = roomKey(axial.q, axial.r);
+    if (!crimsonTransition && crimsonKey && key === crimsonKey) {
+      scene.fog.density = follow(scene.fog.density, CRIMSON_FOG_DENSITY, dt, 3.5);
+    } else if (!crimsonTransition && scene.fog.density !== 0.04) {
+      scene.fog.density = follow(scene.fog.density, 0.04, dt, 3.5);
+    }
     if (!crimsonTransition && key !== currentKey) enterRoom(axial.q, axial.r);
 
     camera.position.copy(player);
+    if (crimsonTransition) {
+      const sway = crimsonCameraSway(crimsonTransition.elapsed, crimsonTransitionU(crimsonTransition.elapsed));
+      camera.position.x += sway.x;
+      camera.position.z += sway.z;
+    }
     bobAmount = Math.max(0, bobAmount - dt * 3);
     camera.position.y = player.y + Math.sin(bobPhase) * 0.035 * bobAmount;
     camera.rotation.order = 'YXZ';
@@ -762,9 +777,9 @@ export function createEngine(canvas, callbacks, { touchMode = false } = {}) {
         lookTouchId = null;
       }
     },
-    /** Brightness multiplier; 1 = default (slightly brighter than the original look). */
+    /** Brightness multiplier; 1 = authored mid, slider runs 0.4–1.8. */
     setBrightness(value) {
-      const b = Math.max(0.4, Math.min(1.6, value));
+      const b = Math.max(0.4, Math.min(1.8, value));
       exposureTarget = BASE_EXPOSURE * b;
     },
     /** Virtual joystick input: x strafe, z forward, each in [-1, 1]. */

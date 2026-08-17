@@ -16,12 +16,14 @@ import PauseMenu from './features/ui/PauseMenu.jsx';
 import TouchControls from './features/ui/TouchControls.jsx';
 import CrimsonArrival from './features/ui/CrimsonArrival.jsx';
 import MysteryCutscene from './features/ui/MysteryCutscene.jsx';
+import { initialPreviewState, parseLaunchFlags } from './features/ui/preview.js';
 
 // Primary input is touch when the pointer is coarse (phones/tablets).
-// ?touch forces it for testing.
+// ?touch forces it; ?preview= mounts an overlay for e2e.
+const LAUNCH = parseLaunchFlags(window.location.search);
 const IS_TOUCH =
-  window.matchMedia?.('(pointer: coarse)').matches ||
-  new URLSearchParams(window.location.search).has('touch');
+  window.matchMedia?.('(pointer: coarse)').matches || LAUNCH.touch;
+const PREVIEW = initialPreviewState(LAUNCH.preview);
 
 const INITIAL_STATS = { rooms: 1, books: 0, fragments: 0 };
 
@@ -33,16 +35,16 @@ export default function App() {
 
   // Incremented on restart: remounts the canvas and rebuilds the engine.
   const [session, setSession] = useState(0);
-  const [phase, setPhase] = useState('splash'); // splash | playing | ended
-  const phaseRef = useRef('splash');
+  const [phase, setPhase] = useState(PREVIEW?.phase ?? 'splash'); // splash | playing | ended
+  const phaseRef = useRef(PREVIEW?.phase ?? 'splash');
   const [stats, setStats] = useState(INITIAL_STATS);
-  const [openBook, setOpenBook] = useState(null);
-  const openBookRef = useRef(null);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuOpenRef = useRef(false);
+  const [openBook, setOpenBook] = useState(PREVIEW?.openBook ?? null);
+  const openBookRef = useRef(PREVIEW?.openBook ?? null);
+  const [menuOpen, setMenuOpen] = useState(PREVIEW?.menuOpen ?? false);
+  const menuOpenRef = useRef(PREVIEW?.menuOpen ?? false);
   const [questProgress, setQuestProgress] = useState(0);
   const [facing, setFacing] = useState(0);
-  const [hovering, setHovering] = useState(false);
+  const [hoverTarget, setHoverTarget] = useState(null);
   const [locked, setLocked] = useState(false);
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
@@ -50,11 +52,13 @@ export default function App() {
   const [muted, setMuted] = useState(false);
   const [brightness, setBrightness] = useState(DEFAULT_BRIGHTNESS);
   const winPendingRef = useRef(false);
-  const crimsonArrivingRef = useRef(false);
-  const [crimsonArriving, setCrimsonArriving] = useState(false);
+  const crimsonArrivingRef = useRef(PREVIEW?.crimsonArriving ?? false);
+  const [crimsonArriving, setCrimsonArriving] = useState(
+    PREVIEW?.crimsonArriving ?? false
+  );
   const seenRevelationsRef = useRef(new Set());
-  const mysteryRef = useRef(null);
-  const [mystery, setMystery] = useState(null);
+  const mysteryRef = useRef(PREVIEW?.mystery ?? null);
+  const [mystery, setMystery] = useState(PREVIEW?.mystery ?? null);
 
   const setPhaseSync = useCallback((value) => {
     phaseRef.current = value;
@@ -79,6 +83,12 @@ export default function App() {
         onRoomEnter({ roomsVisited, crimson }) {
           setStats((s) => ({ ...s, rooms: roomsVisited }));
           getAudio()?.roomStep();
+          // Dismiss an open book when walking into another gallery, not on
+          // the spawn enter (which would also wipe ?preview=book).
+          if (openBookRef.current && roomsVisited > 1) {
+            openBookRef.current = null;
+            setOpenBook(null);
+          }
           if (crimson && !crimsonArrivingRef.current) {
             showToast('The lamps turn to embers.');
           }
@@ -86,7 +96,8 @@ export default function App() {
         onCrimsonTransitionStart() {
           crimsonArrivingRef.current = true;
           setCrimsonArriving(true);
-          document.exitPointerLock();
+          openBookRef.current = null;
+          setOpenBook(null);
         },
         onCrimsonReveal() {
           getAudio()?.crimsonReveal();
@@ -95,7 +106,6 @@ export default function App() {
           crimsonArrivingRef.current = false;
           setCrimsonArriving(false);
           showToast('The lamps turn to embers.');
-          engineRef.current?.requestLock();
         },
         onQuestEvent(event) {
           setQuestProgress(event.progress ?? 0);
@@ -107,8 +117,8 @@ export default function App() {
               const beat = { revelation, step };
               mysteryRef.current = beat;
               setMystery(beat);
-              engine.setPaused(true);
-              document.exitPointerLock();
+              openBookRef.current = null;
+              setOpenBook(null);
               getAudio()?.revelation();
             } else {
               showToast(`The path holds. (${step} of ${PATH_LENGTH})`);
@@ -122,14 +132,7 @@ export default function App() {
           }
         },
         onOpenBook(target) {
-          if (
-            openBookRef.current ||
-            menuOpenRef.current ||
-            winPendingRef.current ||
-            mysteryRef.current
-          ) {
-            return;
-          }
+          if (menuOpenRef.current || winPendingRef.current || mysteryRef.current) return;
           if (phaseRef.current !== 'playing') return;
           if (target.crimson) {
             // Taking the perfect book: the ending overlay takes over.
@@ -153,13 +156,11 @@ export default function App() {
             fragments: fragmentsRef.current.size,
           }));
           getAudio()?.pageOpen();
-          engine.setPaused(true);
           openBookRef.current = content;
           setOpenBook(content);
-          document.exitPointerLock();
         },
         onHover(target) {
-          setHovering(target !== null);
+          setHoverTarget(target);
         },
         onFacing(dir) {
           setFacing(dir);
@@ -204,13 +205,10 @@ export default function App() {
     engine.requestLock();
   }, [setPhaseSync]);
 
-  const closeBook = useCallback((viaClick) => {
+  const closeBook = useCallback(() => {
     openBookRef.current = null;
     setOpenBook(null);
     getAudio()?.pageClose();
-    const engine = engineRef.current;
-    engine.setPaused(false);
-    if (viaClick) engine.requestLock();
   }, []);
 
   const resume = useCallback(() => {
@@ -226,9 +224,6 @@ export default function App() {
     mysteryRef.current = null;
     setMystery(null);
     showToast(`The path holds. (${step} of ${PATH_LENGTH})`);
-    const engine = engineRef.current;
-    engine.setPaused(false);
-    engine.requestLock();
   }, [questProgress, showToast]);
 
   const restart = useCallback(() => {
@@ -276,7 +271,7 @@ export default function App() {
 
   useEffect(() => {
     function onKey(e) {
-      if (e.code === 'Escape' && openBookRef.current) closeBook(false);
+      if (e.code === 'Escape' && openBookRef.current) closeBook();
     }
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
@@ -294,15 +289,15 @@ export default function App() {
 
   return (
     <div className="app">
-      <canvas key={session} ref={canvasRef} className="game-canvas" />
+      <canvas key={session} ref={canvasRef} className="game-canvas" data-testid="game-canvas" />
       {crimsonArriving && phase === 'playing' && <CrimsonArrival />}
       {mystery && phase === 'playing' && (
         <MysteryCutscene
+          key={mystery.step}
           revelation={mystery.revelation}
           step={mystery.step}
           of={PATH_LENGTH}
           onContinue={closeMystery}
-          touch={IS_TOUCH}
         />
       )}
       {phase === 'playing' && (
@@ -310,31 +305,27 @@ export default function App() {
           stats={stats}
           questProgress={questProgress}
           facingName={DIRECTION_NAMES[facing]}
-          hovering={hovering}
-          showCrosshair={
-            (locked || IS_TOUCH) && !openBook && !menuOpen && !crimsonArriving && !mystery
-          }
+          showCrosshair={(locked || IS_TOUCH) && !menuOpen && !crimsonArriving}
           showInteract={
-            !IS_TOUCH && hovering && locked && !openBook && !crimsonArriving && !mystery
+            !IS_TOUCH &&
+            hoverTarget?.kind === 'clue' &&
+            locked &&
+            !menuOpen &&
+            !crimsonArriving
           }
           showResumeHint={showResumeHint}
           toast={toast}
         />
       )}
-      {phase === 'playing' &&
-        IS_TOUCH &&
-        !openBook &&
-        !menuOpen &&
-        !crimsonArriving &&
-        !mystery && (
-          <TouchControls
-            onMove={(x, z) => engineRef.current.setMoveInput(x, z)}
-            onInteract={() => engineRef.current.interact()}
-            onPause={openMenu}
-            hovering={hovering}
-          />
-        )}
-      {openBook && <BookOverlay book={openBook} onClose={() => closeBook(true)} />}
+      {phase === 'playing' && IS_TOUCH && !menuOpen && !crimsonArriving && (
+        <TouchControls
+          onMove={(x, z) => engineRef.current.setMoveInput(x, z)}
+          onInteract={() => engineRef.current.interact()}
+          onPause={openMenu}
+          showRead={hoverTarget?.kind === 'clue'}
+        />
+      )}
+      {openBook && <BookOverlay book={openBook} onClose={closeBook} /> }
       {menuOpen && phase === 'playing' && !openBook && !mystery && (
         <PauseMenu
           onResume={resume}

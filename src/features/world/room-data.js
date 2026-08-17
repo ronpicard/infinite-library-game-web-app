@@ -71,25 +71,10 @@ export function getRoomData(q, r) {
     return idx;
   };
 
-  // Coherent books: one clue per room, at most one aphorism — only these
-  // marked volumes can be opened. Typically 1-2 per gallery; the origin
-  // also carries the intro letter (3 total there).
+  // One clue book per gallery — the only volume you can open.
   const coherent = new Map();
   if (bookCount > 0) {
     coherent.set(pickPresent(), { kind: 'clue' });
-    if (rng() < 0.55) {
-      const idx = pickPresent();
-      if (!coherent.has(idx)) {
-        coherent.set(idx, { kind: 'aphorism', variant: hashInts(seed, 7, idx) });
-      }
-    }
-    if (q === 0 && r === 0) {
-      let idx = pickPresent();
-      while (coherent.has(idx) || missing.has(idx) || flat.has(idx)) {
-        idx = (idx + 1) % bookCount;
-      }
-      coherent.set(idx, { kind: 'intro' });
-    }
   }
 
   const readable = new Set(coherent.keys());

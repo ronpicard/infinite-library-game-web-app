@@ -3,10 +3,17 @@ import { getCrimsonBookContent } from '../books/index.js';
 export default function Ending({ stats, onRestart }) {
   const book = getCrimsonBookContent();
   return (
-    <div className="overlay ending">
+    <div
+      className="overlay ending"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="ending-title"
+    >
       <div className="ending-inner">
         <div className="splash-rule crimson" />
-        <h1 className="ending-title">The Crimson Hexagon</h1>
+        <h1 id="ending-title" className="ending-title">
+          The Crimson Hexagon
+        </h1>
         <h2 className="ending-book-title">{book.title}</h2>
         <div className="ending-body">{book.body}</div>
         <div className="ending-stats">

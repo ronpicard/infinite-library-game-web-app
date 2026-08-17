@@ -10,12 +10,23 @@ export const COLUMN_RING_RADIUS = HEX_RADIUS - 0.62;
 /** Visual hole in the wall, center to jamb. */
 export const DOOR_HALF_WIDTH = 1.18;
 /** Clear half-width at the inner face of the posts (collision + cats). */
-export const DOOR_PASS_HALF = 1.06;
-/** Door side-wall inset from the hex edge; keeps the camera off the mesh. */
-export const DOOR_WALL_INSET = 0.38;
+export const DOOR_PASS_HALF = 1.1;
+/** Full wall thickness; door frames use half of this on the outer edge band. */
+export const WALL_THICKNESS = 0.3;
+/** Half-thickness door frame centered on the outer rim of the hex edge. */
+export const DOOR_FRAME_THICKNESS = WALL_THICKNESS / 2;
+export const DOOR_FRAME_ND = HEX_INRADIUS - DOOR_FRAME_THICKNESS / 2 - 0.01;
+/** Inner face of the door frame — walkable floor stays inside this arc. */
+export const DOOR_INNER_FACE = DOOR_FRAME_ND - DOOR_FRAME_THICKNESS / 2;
+/** Distance from hex edge inward to the inner door frame (for collision). */
+export const DOOR_WALL_INSET = HEX_INRADIUS - DOOR_INNER_FACE;
+/** Door posts start above the floor so the threshold stays clear. */
+export const DOOR_SILL = 0.14;
+/** Clear height under the lintel. */
+export const DOOR_HEIGHT = 3.4;
 export const SHELF_WALL_INSET = 0.95;
 /** Soft radius at each post so the opening is a rounded slot, not a sharp L. */
-export const DOOR_JAMB_RADIUS = 0.18;
+export const DOOR_JAMB_RADIUS = 0.22;
 
 function applyWallAxes(n, along, lateral) {
   return {
@@ -48,7 +59,7 @@ export function clampHexFloor(relX, relZ, { doors, radius, coreRadius }) {
     const isDoor = doorSet.includes(d);
 
     if (isDoor) {
-      const jambAlong = HEX_INRADIUS - DOOR_WALL_INSET;
+      const jambAlong = DOOR_INNER_FACE;
       const jambLat = DOOR_PASS_HALF;
       const jR = radius + DOOR_JAMB_RADIUS;
       const absLat = Math.abs(lateral);
@@ -64,7 +75,7 @@ export function clampHexFloor(relX, relZ, { doors, radius, coreRadius }) {
 
       const gap = DOOR_PASS_HALF - radius;
       if (Math.abs(lateral) > gap) {
-        const limit = HEX_INRADIUS - DOOR_WALL_INSET - radius;
+        const limit = DOOR_INNER_FACE - radius;
         if (along > limit) along = limit;
       }
     } else {

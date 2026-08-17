@@ -6,7 +6,7 @@ const STICK_RADIUS = 52;
  * Virtual joystick (movement) plus READ and pause buttons for touch devices.
  * Look-around dragging is handled by the engine directly on the canvas.
  */
-export default function TouchControls({ onMove, onInteract, onPause, hovering }) {
+export default function TouchControls({ onMove, onInteract, onPause, showRead }) {
   const baseRef = useRef(null);
   const touchIdRef = useRef(null);
   const [thumb, setThumb] = useState({ x: 0, y: 0 });
@@ -68,6 +68,7 @@ export default function TouchControls({ onMove, onInteract, onPause, hovering })
       <div
         ref={baseRef}
         className="joystick"
+        data-testid="joystick"
         onTouchStart={handleStart}
         onTouchMove={handleMove}
         onTouchEnd={handleEnd}
@@ -78,7 +79,7 @@ export default function TouchControls({ onMove, onInteract, onPause, hovering })
           style={{ transform: `translate(${thumb.x}px, ${thumb.y}px)` }}
         />
       </div>
-      {hovering && (
+      {showRead && (
         <button className="touch-read" onClick={onInteract}>
           read
         </button>

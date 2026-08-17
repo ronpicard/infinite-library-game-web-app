@@ -1,9 +1,9 @@
 // Builds the THREE.Group for a single hexagonal gallery from its
 // deterministic room data. Each room draws one of several "ancient library"
-// styles from its seed: palettes, columns, cornices, beams and floor mosaics
-// differ, but geometry and materials are module-level singletons shared by
-// every room. Only per-room instance buffers are created and disposed as
-// rooms stream in and out.
+// styles from its seed: palettes, columns, cornices, beams, and unique
+// floor/wall patterns. Shared geometries stay module-level; per-room
+// materials, instance buffers and pattern textures are disposed as rooms
+// stream out.
 
 import * as THREE from 'three';
 import { hashInts, mulberry32 } from '../../lib/random.js';
@@ -16,20 +16,33 @@ import {
 } from '../world/hex.js';
 import { createRoomCats, disposeCats } from './library-cats.js';
 import { createFlowBeings, disposeFlowBeings } from './flow-beings.js';
+import { createSurfacePatternTexture, makePatternSpec } from './surface-pattern.js';
 import {
   COLUMN_RADIUS,
   COLUMN_RING_RADIUS,
+  DOOR_FRAME_ND,
+  DOOR_FRAME_THICKNESS,
   DOOR_HALF_WIDTH,
+  DOOR_HEIGHT,
   DOOR_PASS_HALF,
+  DOOR_SILL,
   RAIL_RADIUS,
 } from './floor-clamp.js';
 
-export { DOOR_HALF_WIDTH, DOOR_PASS_HALF, RAIL_RADIUS, COLUMN_RADIUS, COLUMN_RING_RADIUS };
+export {
+  DOOR_HALF_WIDTH,
+  DOOR_PASS_HALF,
+  DOOR_HEIGHT,
+  RAIL_RADIUS,
+  COLUMN_RADIUS,
+  COLUMN_RING_RADIUS,
+} from './floor-clamp.js';
 
-export const DOOR_HEIGHT = 3.4;
 export const VOID_RADIUS = 1.5;
+/** Wall and column bases sit above the floor plane so box bottom faces do not z-fight. */
+const WALL_FLOOR_GAP = 0.05;
 const WALL_T = 0.3;
-/** Wall center sits fully inside the hex so adjacent rooms no longer z-fight. */
+/** Solid shelf walls stay slightly inset; door frames use DOOR_FRAME_ND instead. */
 const WALL_ND = HEX_INRADIUS - WALL_T / 2 - 0.02;
 const WALL_LEN = HEX_RADIUS + 0.45; // slight overlap hides corner seams
 const SHELF_SPAN = 5.6;
@@ -39,71 +52,71 @@ const BOOK_DEPTH = 0.42;
 const STYLE_DEFS = [
   {
     id: 'oak-hall',
-    wall: 0x5a4531,
+    wall: 0x6e5640,
     trim: 0x2f2114,
-    floor: 0x453424,
+    floor: 0x5c4632,
     ceiling: 0x362a1c,
     shelf: 0x33241a,
     column: 0x3d2c1b,
     accent: 0x584327,
     lampColor: 0xffb877,
-    lampIntensity: 42,
+    lampIntensity: 50,
     beams: true,
     lampSpots: [[-2.4, 0], [2.4, 0]],
   },
   {
     id: 'sandstone-vault',
-    wall: 0x8a7047,
+    wall: 0x9a7e54,
     trim: 0x66502f,
-    floor: 0x74603e,
+    floor: 0x86704a,
     ceiling: 0x5e4b30,
     shelf: 0x4a3722,
     column: 0x93794f,
     accent: 0x6e5738,
     lampColor: 0xff9a52,
-    lampIntensity: 38,
+    lampIntensity: 46,
     beams: false,
     lampSpots: [[0, -2.7], [2.35, 1.35], [-2.35, 1.35]],
   },
   {
     id: 'marble-rotunda',
-    wall: 0x8c8878,
+    wall: 0x9a9686,
     trim: 0x57523f,
-    floor: 0x3a372f,
+    floor: 0x4e4a40,
     ceiling: 0x6e6a5c,
     shelf: 0x3f3a30,
     column: 0x9a9585,
     accent: 0x615030,
     lampColor: 0xffd9a6,
-    lampIntensity: 46,
+    lampIntensity: 54,
     beams: false,
     lampSpots: [[-2.4, 0], [2.4, 0]],
   },
   {
     id: 'basalt-archive',
-    wall: 0x46464e,
+    wall: 0x5c5c66,
     trim: 0x2c2c33,
-    floor: 0x33333a,
+    floor: 0x4a4a54,
     ceiling: 0x2a2a30,
     shelf: 0x2b2320,
     column: 0x3a3a42,
     accent: 0x6a5c32,
     lampColor: 0xffc182,
-    lampIntensity: 34,
+    lampIntensity: 50,
     beams: false,
     lampSpots: [[0, -2.7], [2.35, 1.35], [-2.35, 1.35]],
   },
   {
     id: 'cedar-scriptorium',
-    wall: 0x6b4630,
+    wall: 0x7a5340,
     trim: 0x3a2417,
-    floor: 0x50392a,
+    floor: 0x624632,
     ceiling: 0x42301f,
     shelf: 0x38261a,
     column: 0x4d3220,
     accent: 0x435c3a,
     lampColor: 0xffa763,
-    lampIntensity: 40,
+    lampIntensity: 48,
     beams: true,
     lampSpots: [[-2.4, 0], [2.4, 0]],
   },
@@ -111,17 +124,17 @@ const STYLE_DEFS = [
 
 const CRIMSON_STYLE = {
   id: 'crimson',
-  wall: 0x2c2226,
-  trim: 0x1a1214,
-  floor: 0x241a1c,
-  ceiling: 0x1c1416,
-  shelf: 0x1e1512,
-  column: 0x241b1e,
-  accent: 0x5c1c22,
-  lampColor: 0xff2028,
-  lampIntensity: 60,
+  wall: 0x503840,
+  trim: 0x2a1c20,
+  floor: 0x443038,
+  ceiling: 0x2c2024,
+  shelf: 0x2a2018,
+  column: 0x34282c,
+  accent: 0x7a2830,
+  lampColor: 0xff4850,
+  lampIntensity: 82,
   beams: false,
-  lampSpots: [],
+  lampSpots: [[-2.4, 0], [2.4, 0]],
 };
 
 // Subtle plaster/stone speckle shared by every wall and floor material.
@@ -149,9 +162,15 @@ function makeStyleMaterials(def) {
     new THREE.MeshStandardMaterial({ color, roughness: 0.95, map: noiseTexture, ...extra });
   return {
     def,
-    wall: std(def.wall),
+    wall: std(def.wall, { map: null }),
     trim: std(def.trim, { map: null, roughness: 0.8 }),
-    floor: std(def.floor, { roughness: 1 }),
+    floor: std(def.floor, {
+      map: null,
+      roughness: 1,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    }),
     ceiling: std(def.ceiling, { map: null, roughness: 1 }),
     shelf: std(def.shelf, { map: null, roughness: 0.85 }),
     column: std(def.column, { roughness: 0.9 }),
@@ -179,9 +198,6 @@ const mats = {
     roughness: 0.5,
     metalness: 0.55,
   }),
-  ghost: new THREE.MeshBasicMaterial({ color: 0x171008 }),
-  ghostFloor: new THREE.MeshBasicMaterial({ color: 0x2a1d10, side: THREE.DoubleSide }),
-  ghostLamp: new THREE.MeshBasicMaterial({ color: 0xc98a48 }),
   pedestal: new THREE.MeshStandardMaterial({ color: 0x2a1214, roughness: 0.6 }),
   crimsonBook: new THREE.MeshStandardMaterial({
     color: 0x1a0204,
@@ -259,7 +275,17 @@ function addWallBox(group, material, dirIndex, w, h, depth, tanOff, y, normalDis
   const { n, t, yaw } = wallTransform(dirIndex);
   const cx = n.x * normalDist + t.x * tanOff;
   const cz = n.z * normalDist + t.z * tanOff;
-  return addBox(group, material, w, h, depth, cx, y, cz, yaw);
+  // Lift any segment whose bottom would sit on the floor — otherwise the
+  // horizontal bottom face coplanars with the floor mesh and z-fights,
+  // especially visible as black speckle at door jambs.
+  let cy = y;
+  let bh = h;
+  const bottom = y - h / 2;
+  if (bottom < WALL_FLOOR_GAP + 0.01) {
+    bh = h - WALL_FLOOR_GAP;
+    cy = WALL_FLOOR_GAP + bh / 2;
+  }
+  return addBox(group, material, w, bh, depth, cx, cy, cz, yaw);
 }
 
 function buildSolidWall(group, sm, dirIndex) {
@@ -269,19 +295,36 @@ function buildSolidWall(group, sm, dirIndex) {
 function buildDoorway(group, sm, dirIndex) {
   const sideW = (WALL_LEN - DOOR_HALF_WIDTH * 2) / 2;
   const off = DOOR_HALF_WIDTH + sideW / 2;
-  const nd = WALL_ND;
-  addWallBox(group, sm.wall, dirIndex, sideW, ROOM_HEIGHT, WALL_T, off, ROOM_HEIGHT / 2, nd);
-  addWallBox(group, sm.wall, dirIndex, sideW, ROOM_HEIGHT, WALL_T, -off, ROOM_HEIGHT / 2, nd);
+  const nd = DOOR_FRAME_ND;
+  const ft = DOOR_FRAME_THICKNESS;
+  addWallBox(group, sm.wall, dirIndex, sideW, ROOM_HEIGHT, ft, off, ROOM_HEIGHT / 2, nd);
+  addWallBox(group, sm.wall, dirIndex, sideW, ROOM_HEIGHT, ft, -off, ROOM_HEIGHT / 2, nd);
   const lintelH = ROOM_HEIGHT - DOOR_HEIGHT;
-  addWallBox(group, sm.wall, dirIndex, DOOR_HALF_WIDTH * 2, lintelH, WALL_T, 0, DOOR_HEIGHT + lintelH / 2, nd);
-  // Posts sit fully inside the hex so they no longer collide with the neighbor's frame.
-  const postW = 0.14;
-  const postD = 0.2;
-  const postTan = DOOR_HALF_WIDTH - postW / 2;
-  addWallBox(group, sm.trim, dirIndex, postW, DOOR_HEIGHT, postD, postTan, DOOR_HEIGHT / 2, nd);
-  addWallBox(group, sm.trim, dirIndex, postW, DOOR_HEIGHT, postD, -postTan, DOOR_HEIGHT / 2, nd);
-  addWallBox(group, sm.trim, dirIndex, DOOR_HALF_WIDTH * 2 + 0.16, 0.2, postD, 0, DOOR_HEIGHT + 0.06, nd);
-  addWallBox(group, sm.accent, dirIndex, 0.32, 0.26, 0.28, 0, DOOR_HEIGHT + 0.08, nd);
+  addWallBox(group, sm.wall, dirIndex, DOOR_HALF_WIDTH * 2, lintelH, ft, 0, DOOR_HEIGHT + lintelH / 2, nd);
+  // Jambs sit flush with the opening edge so no void shows through as black
+  // vertical stripes on the sides.
+  const jambW = 0.14;
+  const jambD = ft + 0.02;
+  const jambTan = DOOR_HALF_WIDTH - jambW / 2;
+  const jambH = DOOR_HEIGHT - WALL_FLOOR_GAP;
+  addWallBox(group, sm.trim, dirIndex, jambW, jambH, jambD, jambTan, WALL_FLOOR_GAP + jambH / 2, nd);
+  addWallBox(group, sm.trim, dirIndex, jambW, jambH, jambD, -jambTan, WALL_FLOOR_GAP + jambH / 2, nd);
+  addWallBox(group, sm.trim, dirIndex, DOOR_HALF_WIDTH * 2 + 0.16, 0.12, jambD, 0, DOOR_SILL + 0.06, nd);
+  addWallBox(group, sm.accent, dirIndex, 0.32, 0.22, 0.24, 0, DOOR_HEIGHT + 0.08, nd);
+  // Flat threshold across the opening hides the floor seam between adjacent
+  // galleries and covers the lifted jamb corners.
+  const thH = 0.055;
+  addWallBox(
+    group,
+    sm.floor,
+    dirIndex,
+    DOOR_HALF_WIDTH * 2 + 0.28,
+    thH,
+    0.52,
+    0,
+    thH / 2 + 0.006,
+    nd - 0.05
+  );
 }
 
 function buildShelfFrame(group, sm, dirIndex, rowYs) {
@@ -303,10 +346,10 @@ function buildColumns(group, sm) {
     const x = Math.cos(a) * COLUMN_RING_RADIUS;
     const z = Math.sin(a) * COLUMN_RING_RADIUS;
     const col = new THREE.Mesh(columnGeo, sm.column);
-    col.position.set(x, ROOM_HEIGHT / 2, z);
+    col.position.set(x, WALL_FLOOR_GAP + ROOM_HEIGHT / 2, z);
     group.add(col);
     // Base and capital.
-    addBox(group, sm.trim, 0.72, 0.22, 0.72, x, 0.11, z, a);
+    addBox(group, sm.trim, 0.72, 0.22, 0.72, x, WALL_FLOOR_GAP + 0.11, z, a);
     addBox(group, sm.trim, 0.66, 0.18, 0.66, x, ROOM_HEIGHT - 0.34, z, a);
   }
 }
@@ -338,12 +381,8 @@ function buildBeams(group, sm) {
 }
 
 const IVORY = new THREE.Color(0xfff4dc);
-const INTRO_GOLD = new THREE.Color(0xffe8a8);
-const APHORISM_SEA = new THREE.Color(0xc8e8dc);
 const MARKED_EMISSIVE = {
   clue: new THREE.Color(0xff8844),
-  intro: new THREE.Color(0xffcc55),
-  aphorism: new THREE.Color(0x55cc99),
 };
 const markedBookMat = new THREE.MeshStandardMaterial({
   color: 0xffffff,
@@ -486,12 +525,8 @@ function buildMarkedVolumes(entries, darkVariant) {
     markedMesh.setMatrixAt(i, e.matrix);
     indexMap.push(e.index);
     kinds.push(e.kind);
-    let spine;
-    if (e.kind === 'intro') spine = INTRO_GOLD;
-    else if (e.kind === 'aphorism') spine = APHORISM_SEA;
-    else spine = IVORY;
-    markedMesh.setColorAt(i, spine);
-    emissiveColors.push(MARKED_EMISSIVE[e.kind] ?? MARKED_EMISSIVE.clue);
+    markedMesh.setColorAt(i, IVORY);
+    emissiveColors.push(MARKED_EMISSIVE.clue);
     positions.push(e.ribbonPos.x, e.ribbonPos.y + 0.12, e.ribbonPos.z);
   }
   markedMesh.instanceMatrix.needsUpdate = true;
@@ -513,29 +548,23 @@ function buildMarkedVolumes(entries, darkVariant) {
   return { mesh: markedMesh, indexMap, ribbons, positions, kinds, emissiveColors };
 }
 
-/** Dim silhouette of a gallery, placed above and below the void. */
-function buildGhostRoom(yOffset) {
-  const g = new THREE.Group();
-  const floor = new THREE.Mesh(hexWithHoleGeo, mats.ghostFloor);
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.y = 0.04; // avoid z-fighting with the real ceiling plane
-  g.add(floor);
-  const ring = new THREE.Mesh(railTop, mats.ghost);
-  ring.rotation.x = Math.PI / 2;
-  ring.position.y = 1.02;
-  g.add(ring);
-  for (let k = 0; k < 6; k++) {
-    addWallBox(g, mats.ghost, k, WALL_LEN, ROOM_HEIGHT, WALL_T, 0, ROOM_HEIGHT / 2, WALL_ND);
-    addWallBox(g, mats.ghost, k, SHELF_SPAN, 4.4, 0.6, 0, 2.25, HEX_INRADIUS - 0.35);
-  }
-  for (const sx of [-2.4, 2.4]) {
-    const lampDot = new THREE.Mesh(lampSphere, mats.ghostLamp);
-    lampDot.position.set(sx, ROOM_HEIGHT - 0.5, 0);
-    g.add(lampDot);
-  }
-  g.position.y = yOffset;
-  return g;
-}
+// A closed cylinder that plugs the void a short distance past the ceiling and
+// floor, viewed from inside (BackSide). Fog is disabled so it stays pitch
+// black regardless of distance, giving the shaft a quick fade to darkness.
+const VOID_CAP_LENGTH = 6;
+const voidCapGeo = new THREE.CylinderGeometry(
+  VOID_RADIUS * 0.99,
+  VOID_RADIUS * 0.99,
+  VOID_CAP_LENGTH,
+  24,
+  1,
+  false
+);
+const voidCapMat = new THREE.MeshBasicMaterial({
+  color: 0x000000,
+  side: THREE.BackSide,
+  fog: false,
+});
 
 // ------------------------------------------------------- arcane decorations
 // A band of invented glyphs drawn in a circle; mapped onto a flat ring that
@@ -583,7 +612,7 @@ const runeRingMat = new THREE.MeshBasicMaterial({
   opacity: 0.34,
   blending: THREE.AdditiveBlending,
   depthWrite: false,
-  color: 0xffc98a,
+  color: 0xb8a0ff,
 });
 const runeRingMatCrimson = runeRingMat.clone();
 runeRingMatCrimson.color.set(0xff2a33);
@@ -660,7 +689,7 @@ function buildGlyphs(rng, crimson) {
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   const mat = new THREE.PointsMaterial({
     map: glyphTexture,
-    color: crimson ? 0xff4a4a : 0xffd9a0,
+    color: crimson ? 0xff4a4a : 0xc8b8ff,
     size: 0.16,
     transparent: true,
     opacity: 0.55,
@@ -904,26 +933,35 @@ export function buildRoom(roomData, { crimson = false } = {}) {
   const base = crimson ? crimsonMats : styleMats[styleIndexForSeed(roomData.seed)];
   const def = base.def;
 
-  // Per-room palette drift: clone the tintable materials and nudge their hue
-  // and lightness so no two galleries feel identical. Cloned materials share
-  // textures and are disposed with the room.
+  const wallSpec = makePatternSpec(roomData.seed, 'wall');
+  const floorSpec = makePatternSpec(roomData.seed, 'floor');
+  const wallTex = createSurfacePatternTexture(wallSpec);
+  const floorTex = createSurfacePatternTexture(floorSpec);
+
+  // Per-room palette drift plus unique floor/wall maps. Cloned materials
+  // and their pattern textures are disposed with the room.
   const tinted = [];
-  const tint = (mat) => {
+  const tint = (mat, map) => {
     const m = mat.clone();
     m.color.offsetHSL(roomData.hueJitter, 0, roomData.lightJitter);
+    if (map) {
+      m.map = map;
+      m.needsUpdate = true;
+    }
     tinted.push(m);
     return m;
   };
   const sm = {
     ...base,
-    wall: tint(base.wall),
-    floor: tint(base.floor),
+    wall: tint(base.wall, wallTex),
+    floor: tint(base.floor, floorTex),
     column: tint(base.column),
     accent: tint(base.accent),
   };
 
   const floor = new THREE.Mesh(crimson ? hexSolidGeo : hexWithHoleGeo, sm.floor);
   floor.rotation.x = -Math.PI / 2;
+  floor.position.y = 0.014;
   group.add(floor);
   const ceiling = new THREE.Mesh(crimson ? hexSolidGeo : hexWithHoleGeo, sm.ceiling);
   ceiling.rotation.x = Math.PI / 2;
@@ -1004,7 +1042,7 @@ export function buildRoom(roomData, { crimson = false } = {}) {
   const sigils = [];
   const sigilMat = new THREE.MeshBasicMaterial({
     map: sigilTexture,
-    color: crimson ? 0xff2a33 : 0xffc98a,
+    color: crimson ? 0xff2a33 : 0xb8a0ff,
     transparent: true,
     opacity: 0.5,
     blending: THREE.AdditiveBlending,
@@ -1167,11 +1205,21 @@ export function buildRoom(roomData, { crimson = false } = {}) {
     crimsonBook.position.y = 1.22;
     crimsonBook.rotation.y = 0.6;
     group.add(crimsonBook);
-    light = new THREE.PointLight(0xff2028, 60, 24, 2);
-    light.position.set(0, 3.4, 0);
+    for (const [sx, sz] of def.lampSpots) {
+      const lamp = new THREE.Mesh(lampSphere, sm.lamp);
+      lamp.position.set(sx, ROOM_HEIGHT - 0.55, sz);
+      group.add(lamp);
+      const halo = new THREE.Sprite(haloMat);
+      halo.position.set(sx, ROOM_HEIGHT - 0.55, sz);
+      halo.scale.setScalar(1.6);
+      group.add(halo);
+      halos.push(halo);
+    }
+    light = new THREE.PointLight(0xff3840, 88, 30, 1.8);
+    light.position.set(0, 3.6, 0);
     group.add(light);
-    ember = new THREE.PointLight(0xff5533, 14, 8, 2);
-    ember.position.set(0, 1.8, 0);
+    ember = new THREE.PointLight(0xff6644, 0, 14, 1.8);
+    ember.position.set(0, 1.85, 0);
     group.add(ember);
   } else {
     // Open railing around the void: balusters + a top ring.
@@ -1202,8 +1250,12 @@ export function buildRoom(roomData, { crimson = false } = {}) {
     light.position.set(0, 3.7, 0);
     group.add(light);
 
-    group.add(buildGhostRoom(-ROOM_HEIGHT));
-    group.add(buildGhostRoom(ROOM_HEIGHT));
+    const capAbove = new THREE.Mesh(voidCapGeo, voidCapMat);
+    capAbove.position.y = ROOM_HEIGHT + VOID_CAP_LENGTH / 2 + 0.02;
+    group.add(capAbove);
+    const capBelow = new THREE.Mesh(voidCapGeo, voidCapMat);
+    capBelow.position.y = -VOID_CAP_LENGTH / 2 - 0.02;
+    group.add(capBelow);
   }
 
   const dust = buildDust(rng, roomData.dustCount);
@@ -1268,6 +1320,8 @@ export function buildRoom(roomData, { crimson = false } = {}) {
       if (owl) disposeCreature(owl.group);
       if (beetle) disposeCreature(beetle.group);
       for (const m of tinted) m.dispose();
+      wallTex.dispose();
+      floorTex.dispose();
     },
   };
 }

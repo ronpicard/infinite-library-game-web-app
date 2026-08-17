@@ -102,7 +102,6 @@ console.log(`sealed rooms: ${sealed}/${sampled} (${((100 * sealed) / sampled).to
 
   const origin = getRoomData(0, 0);
   const kinds = [...origin.coherent.values()].map((v) => v.kind);
-  check(kinds.includes('intro'), 'origin missing intro book');
   check(kinds.includes('clue'), 'origin missing clue book');
 
   const clueIdx = [...origin.coherent.entries()].find(([, v]) => v.kind === 'clue')[0];

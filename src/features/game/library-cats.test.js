@@ -3,7 +3,7 @@ import { mulberry32 } from '../../lib/random.js';
 import { HEX_INRADIUS } from '../world/hex.js';
 import { getRoomData } from '../world/room-data.js';
 import { RAIL_RADIUS } from './floor-clamp.js';
-import { clampCatFloor, createRoomCats, disposeCats } from './library-cats.js';
+import { clampCatFloor, createRoomCats, disposeCats, updateRoomCats } from './library-cats.js';
 
 const CAT_RADIUS = 0.14;
 
@@ -60,5 +60,46 @@ describe('createRoomCats and disposeCats', () => {
     disposeCats(cats);
     expect(matDisposed).toBe(2);
     expect(geoDisposed).toBe(geos.size);
+  });
+
+  it('spawns the same count for the same seed', () => {
+    const room = getRoomData(0, 0);
+    const a = createRoomCats(room, mulberry32(99));
+    const b = createRoomCats(room, mulberry32(99));
+    expect(a).toHaveLength(b.length);
+    expect(a[0].colorIdx).toBe(b[0].colorIdx);
+  });
+});
+
+describe('updateRoomCats', () => {
+  it('fires onMeow once when a cat is already meowing', () => {
+    const room = getRoomData(0, 0);
+    const cats = createRoomCats(room, mulberry32(1));
+    const cat = cats[0];
+    cat.state = 'meow';
+    cat.stateTimer = 0.4;
+    cat.meowed = false;
+    let meows = 0;
+    updateRoomCats(cats, 0.016, 0, room, () => {
+      meows += 1;
+    });
+    updateRoomCats(cats, 0.016, 0.016, room, () => {
+      meows += 1;
+    });
+    expect(meows).toBe(1);
+  });
+
+  it('advances a walking cat toward its target', () => {
+    const room = getRoomData(0, 0);
+    const cats = createRoomCats(room, mulberry32(1));
+    const cat = cats[0];
+    cat.state = 'walk';
+    cat.stateTimer = 8;
+    cat.x = 2.2;
+    cat.z = 0.4;
+    cat.target = { x: 3.2, z: 0.4 };
+    const startX = cat.x;
+    updateRoomCats(cats, 0.2, 1, room);
+    expect(cat.x).toBeGreaterThan(startX);
   });
 });

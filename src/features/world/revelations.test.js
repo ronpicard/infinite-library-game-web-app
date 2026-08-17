@@ -20,6 +20,19 @@ describe('revelationForProgress', () => {
   });
 });
 
+describe('PATH_REVELATIONS', () => {
+  it('covers the four in-progress steps with unique titles', () => {
+    const keys = Object.keys(PATH_REVELATIONS).map(Number).sort((a, b) => a - b);
+    expect(keys).toEqual([1, 2, 3, 4]);
+    const titles = keys.map((k) => PATH_REVELATIONS[k].title);
+    expect(new Set(titles).size).toBe(4);
+    for (const beat of Object.values(PATH_REVELATIONS)) {
+      expect(beat.eyebrow.length).toBeGreaterThan(0);
+      expect(beat.lines.every((line) => line.length > 0)).toBe(true);
+    }
+  });
+});
+
 describe('mysteryProgressLabel', () => {
   it('counts against the five-step path, matching the HUD dots', () => {
     expect(PATH_LENGTH).toBe(5);

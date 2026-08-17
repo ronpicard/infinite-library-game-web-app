@@ -1,7 +1,7 @@
 /** Cheap lighting helpers: no extra lights, just weights and easing. */
 
 export const LIGHT_BLEND_SECONDS = 0.6;
-export const NEIGHBOR_LIGHT = 0.28;
+export const NEIGHBOR_LIGHT = 0.38;
 export const FLICKER_DEPTH = 0.032;
 export const LIGHT_FOLLOW = 9;
 export const EXPOSURE_FOLLOW = 7;

@@ -74,3 +74,22 @@ describe('dirUnitVector', () => {
     }
   });
 });
+
+describe('worldToAxial', () => {
+  it('maps a point inside the origin hex back to (0, 0)', () => {
+    // === treats -0 and +0 as equal; toEqual distinguishes them, which is
+    // a distinction the rest of the code never relies on.
+    const got = worldToAxial(0.4, -0.3);
+    expect(got.q === 0 && got.r === 0).toBe(true);
+  });
+
+  it('maps each neighbor of origin from that room\'s world center', () => {
+    for (let i = 0; i < 6; i++) {
+      const n = neighbor(0, 0, i);
+      const w = axialToWorld(n.q, n.r);
+      const got = worldToAxial(w.x, w.z);
+      expect(got.q === n.q && got.r === n.r).toBe(true);
+      expect(dirBetween(0, 0, n.q, n.r)).toBe(i);
+    }
+  });
+});

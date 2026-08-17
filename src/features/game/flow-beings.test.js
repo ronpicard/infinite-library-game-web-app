@@ -11,6 +11,13 @@ describe('doorFlowPull', () => {
     expect(doorFlowPull(toward + Math.PI, [0])).toBeLessThan(0.1);
     expect(doorFlowPull(toward, [])).toBe(0);
   });
+
+  it('prefers the nearer of two open doors', () => {
+    const n0 = dirUnitVector(0);
+    const toward0 = Math.atan2(n0.z, n0.x);
+    expect(doorFlowPull(toward0, [0, 3])).toBeCloseTo(doorFlowPull(toward0, [0]));
+    expect(doorFlowPull(toward0, [0, 3])).toBeGreaterThan(doorFlowPull(toward0, [3]));
+  });
 });
 
 describe('flowBeingPose', () => {
@@ -32,5 +39,12 @@ describe('flowBeingPose', () => {
     const a = flowBeingPose(4.2, being, [0, 3]);
     const b = flowBeingPose(4.2, being, [0, 3]);
     expect(a).toEqual(b);
+    expect(a).toEqual(
+      expect.objectContaining({
+        yaw: expect.any(Number),
+        flap: expect.any(Number),
+        glow: expect.any(Number),
+      })
+    );
   });
 });

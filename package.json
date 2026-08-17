@@ -12,6 +12,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "verify": "node scripts/verify-quest.mjs"
   },
   "dependencies": {
@@ -21,6 +22,7 @@
     "tone": "^15.1.22"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.1",
     "@vitejs/plugin-react": "^6.0.3",
     "vite": "^8.1.3",
     "vitest": "^4.1.10"

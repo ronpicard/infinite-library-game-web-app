@@ -57,18 +57,26 @@ describe('getRoomData', () => {
     for (const idx of room.missing) expect(room.flat.has(idx)).toBe(false);
   });
 
-  it('places an intro letter and a clue on the origin shelves', () => {
-    const origin = getRoomData(0, 0);
-    const kinds = [...origin.coherent.values()].map((v) => v.kind);
-    expect(kinds).toContain('intro');
-    expect(kinds).toContain('clue');
-    expect(origin.coherent.size).toBeGreaterThanOrEqual(2);
+  it('places exactly one clue per gallery', () => {
+    for (let q = -5; q <= 5; q++) {
+      for (let r = -5; r <= 5; r++) {
+        const room = getRoomData(q, r);
+        if (room.bookCount === 0) {
+          expect(room.coherent.size).toBe(0);
+          continue;
+        }
+        expect([...room.coherent.values()].map((v) => v.kind)).toEqual(['clue']);
+      }
+    }
   });
 
-  it('places at least a clue in a typical gallery', () => {
+  it('places a clue on the origin shelves', () => {
+    const origin = getRoomData(0, 0);
+    expect([...origin.coherent.values()].map((v) => v.kind)).toEqual(['clue']);
+  });
+
+  it('places a clue in a typical gallery', () => {
     const room = getRoomData(2, 1);
-    const kinds = [...room.coherent.values()].map((v) => v.kind);
-    expect(kinds).toContain('clue');
-    expect(kinds).not.toContain('intro');
+    expect([...room.coherent.values()].map((v) => v.kind)).toEqual(['clue']);
   });
 });
