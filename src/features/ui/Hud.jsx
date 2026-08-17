@@ -30,7 +30,7 @@ export default function Hud({
         <span>{stats.fragments} legible fragments</span>
       </div>
 
-      {showInteract && <div className="hud-interact">read — E</div>}
+      {showInteract && <div className="hud-interact">read marked volume — E</div>}
 
       {showResumeHint && <div className="hud-resume">click to walk again</div>}
 

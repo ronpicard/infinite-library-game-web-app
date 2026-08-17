@@ -71,20 +71,18 @@ export function getRoomData(q, r) {
     return idx;
   };
 
-  // Coherent books: exactly one clue book per room (the quest must be
-  // completable from anywhere), plus 0-2 aphorism books. Rare against
-  // ~250-450 gibberish volumes.
+  // Coherent books: one clue per room, at most one aphorism — only these
+  // marked volumes can be opened. Typically 1-2 per gallery; the origin
+  // also carries the intro letter (3 total there).
   const coherent = new Map();
   if (bookCount > 0) {
     coherent.set(pickPresent(), { kind: 'clue' });
-    const aphorismCount = rng() < 0.7 ? 1 : rng() < 0.5 ? 2 : 0;
-    for (let i = 0; i < aphorismCount; i++) {
+    if (rng() < 0.55) {
       const idx = pickPresent();
       if (!coherent.has(idx)) {
         coherent.set(idx, { kind: 'aphorism', variant: hashInts(seed, 7, idx) });
       }
     }
-    // The origin room always carries the letter that sets the goal.
     if (q === 0 && r === 0) {
       let idx = pickPresent();
       while (coherent.has(idx) || missing.has(idx) || flat.has(idx)) {
@@ -93,6 +91,8 @@ export function getRoomData(q, r) {
       coherent.set(idx, { kind: 'intro' });
     }
   }
+
+  const readable = new Set(coherent.keys());
 
   return {
     q,
@@ -106,6 +106,7 @@ export function getRoomData(q, r) {
     missing,
     flat,
     coherent,
+    readable,
     lampJitter: 0.85 + rng() * 0.3,
     // Small per-room drift so no two galleries share an exact palette.
     hueJitter: (rng() - 0.5) * 0.05,

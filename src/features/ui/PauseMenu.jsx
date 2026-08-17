@@ -6,6 +6,8 @@ export default function PauseMenu({
   muted,
   onVolume,
   onToggleMute,
+  brightness,
+  onBrightness,
 }) {
   return (
     <div className="overlay pause-menu">
@@ -19,6 +21,20 @@ export default function PauseMenu({
           <button className="serif-button pause-restart" onClick={onRestart}>
             Restart the Search
           </button>
+        </div>
+
+        <div className="settings">
+          <div className="settings-title">display</div>
+          <label className="settings-row">
+            <span>brightness</span>
+            <input
+              type="range"
+              min="40"
+              max="160"
+              value={Math.round(brightness * 100)}
+              onChange={(e) => onBrightness(Number(e.target.value) / 100)}
+            />
+          </label>
         </div>
 
         <div className="settings">
@@ -38,6 +54,11 @@ export default function PauseMenu({
             {muted ? 'unmute' : 'mute'}
           </button>
         </div>
+
+        <p className="pause-nav-hint">
+          Open a marked volume for the way. Follow the named directions — the HUD
+          shows which way you face — and keep to the path of five galleries.
+        </p>
 
         <div className="splash-controls">
           {touch ? (

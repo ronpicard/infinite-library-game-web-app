@@ -1,12 +1,10 @@
-// Subtle ambience built with Tone.js: a very quiet low drone, sparse
-// distant echoes, and small interaction cues. Created lazily after the
-// first user gesture (required for WebAudio).
+// Subtle ambience built with Tone.js: sine/triangle tones only — no noise
+// generators. Created lazily after the first user gesture (WebAudio policy).
 
 import * as Tone from 'tone';
 
 let ctx = null;
 
-// Settings survive across init and are applied the moment audio exists.
 const BASE_MASTER_GAIN = 0.8;
 let currentVolume = 0.7;
 let currentMuted = false;
@@ -31,13 +29,6 @@ async function build() {
   const lfo = new Tone.LFO(0.02, 120, 260).start();
   lfo.connect(filter.frequency);
 
-  // A faint airy shimmer so the silence never feels dead.
-  const airGain = new Tone.Gain(0.006).connect(reverb);
-  const airFilter = new Tone.Filter(1900, 'bandpass').connect(airGain);
-  const air = new Tone.Noise('pink').connect(airFilter).start();
-  const airLfo = new Tone.LFO(0.045, 1200, 2600).start();
-  airLfo.connect(airFilter.frequency);
-
   // Distant echoes: a soft struck tone through long reverb, every 10-32 s.
   const echoSynth = new Tone.Synth({
     oscillator: { type: 'triangle' },
@@ -55,25 +46,20 @@ async function build() {
   }
   scheduleEcho();
 
-  // Page rustle: filtered noise burst.
-  const pageNoise = new Tone.NoiseSynth({
-    noise: { type: 'pink' },
-    envelope: { attack: 0.03, decay: 0.22, sustain: 0 },
-    volume: -22,
-  }).connect(master);
+  // Page turn: soft plucked tone, no noise.
+  const pageSynth = new Tone.PluckSynth({
+    attackNoise: 0,
+    dampening: 3200,
+    resonance: 0.82,
+    volume: -26,
+  }).connect(reverb);
 
-  // Footsteps: a dull noise thud through a wandering lowpass.
-  const stepFilter = new Tone.Filter(380, 'lowpass').connect(master);
-  const stepNoise = new Tone.NoiseSynth({
-    noise: { type: 'brown' },
-    envelope: { attack: 0.002, decay: 0.09, sustain: 0 },
-    volume: -24,
-  }).connect(stepFilter);
+  // Footsteps: dull membrane thud only.
   const stepThump = new Tone.MembraneSynth({
     pitchDecay: 0.008,
     octaves: 1.5,
-    envelope: { attack: 0.001, decay: 0.09, sustain: 0 },
-    volume: -30,
+    envelope: { attack: 0.001, decay: 0.11, sustain: 0 },
+    volume: -28,
   }).connect(master);
 
   // Small dry pluck for menu/UI feedback.
@@ -96,18 +82,22 @@ async function build() {
     volume: -28,
   }).connect(master);
 
+  const meowSynth = new Tone.Synth({
+    oscillator: { type: 'sine' },
+    envelope: { attack: 0.025, decay: 0.1, sustain: 0.12, release: 0.32 },
+    volume: -22,
+  }).connect(reverb);
+
   return {
     master,
     pageOpen() {
-      pageNoise.triggerAttackRelease(0.2);
+      pageSynth.triggerAttackRelease('G4', 0.18);
     },
     pageClose() {
-      pageNoise.triggerAttackRelease(0.12);
+      pageSynth.triggerAttackRelease('D4', 0.12);
     },
     footstep() {
-      stepFilter.frequency.value = 300 + Math.random() * 220;
-      stepNoise.triggerAttackRelease(0.07);
-      stepThump.triggerAttackRelease(36 + Math.random() * 8, 0.06);
+      stepThump.triggerAttackRelease(36 + Math.random() * 8, 0.07);
     },
     uiClick() {
       uiSynth.triggerAttackRelease('C5', 0.06);
@@ -115,11 +105,32 @@ async function build() {
     pathAdvance() {
       echoSynth.triggerAttackRelease('A3', 1.2);
     },
+    /** Soft, unsettled chord under a path revelation cutscene. */
+    revelation() {
+      const now = Tone.now();
+      echoSynth.triggerAttackRelease('E3', 2.4, now);
+      echoSynth.triggerAttackRelease('B2', 3.0, now + 0.55);
+      echoSynth.triggerAttackRelease('F#3', 2.2, now + 1.3);
+    },
     pathLost() {
       echoSynth.triggerAttackRelease('Eb2', 2);
     },
+    /** Low swell when the final chamber seals and transforms. */
+    crimsonReveal() {
+      const now = Tone.now();
+      echoSynth.triggerAttackRelease('D2', 2.4, now);
+      echoSynth.triggerAttackRelease('A2', 3.2, now + 0.8);
+      roomSynth.triggerAttackRelease('G1', 1.8, now + 0.3);
+    },
     roomStep() {
       roomSynth.triggerAttackRelease('C1', 0.1);
+    },
+    /** Soft two-note meow — sine only, pitch varies by cat color. */
+    meow(variant = 0) {
+      const now = Tone.now();
+      const base = 280 + variant * 35 + Math.random() * 70;
+      meowSynth.triggerAttackRelease(base, 0.18, now);
+      meowSynth.triggerAttackRelease(base * 1.4, 0.28, now + 0.16);
     },
     win() {
       const now = Tone.now();
@@ -130,8 +141,7 @@ async function build() {
       clearTimeout(echoTimer);
       const nodes = [
         oscA, oscB, lfo, filter, droneGain,
-        air, airFilter, airGain, airLfo,
-        echoSynth, pageNoise, stepNoise, stepFilter, stepThump,
+        echoSynth, pageSynth, stepThump, meowSynth,
         uiSynth, winSynth, roomSynth, reverb, master,
       ];
       for (const node of nodes) node.dispose();

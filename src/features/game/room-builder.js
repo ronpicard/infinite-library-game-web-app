@@ -14,14 +14,19 @@ import {
   dirUnitVector,
   axialToWorld,
 } from '../world/hex.js';
+import { createRoomCats, disposeCats } from './library-cats.js';
 
 export const DOOR_HALF_WIDTH = 1.1;
+/** Clear half-width through a doorway after frame posts (collision + cats). */
+export const DOOR_PASS_HALF = 0.92;
 export const DOOR_HEIGHT = 3.4;
 export const VOID_RADIUS = 1.5;
 export const RAIL_RADIUS = 1.78;
 export const COLUMN_RADIUS = 0.3;
 export const COLUMN_RING_RADIUS = HEX_RADIUS - 0.62;
 const WALL_T = 0.3;
+/** Wall center sits fully inside the hex so adjacent rooms no longer z-fight. */
+const WALL_ND = HEX_INRADIUS - WALL_T / 2 - 0.02;
 const WALL_LEN = HEX_RADIUS + 0.45; // slight overlap hides corner seams
 const SHELF_SPAN = 5.6;
 const BOOK_DEPTH = 0.42;
@@ -254,22 +259,23 @@ function addWallBox(group, material, dirIndex, w, h, depth, tanOff, y, normalDis
 }
 
 function buildSolidWall(group, sm, dirIndex) {
-  addWallBox(group, sm.wall, dirIndex, WALL_LEN, ROOM_HEIGHT, WALL_T, 0, ROOM_HEIGHT / 2, HEX_INRADIUS + WALL_T / 2);
+  addWallBox(group, sm.wall, dirIndex, WALL_LEN, ROOM_HEIGHT, WALL_T, 0, ROOM_HEIGHT / 2, WALL_ND);
 }
 
 function buildDoorway(group, sm, dirIndex) {
   const sideW = (WALL_LEN - DOOR_HALF_WIDTH * 2) / 2;
   const off = DOOR_HALF_WIDTH + sideW / 2;
-  const nd = HEX_INRADIUS + WALL_T / 2;
+  const nd = WALL_ND;
   addWallBox(group, sm.wall, dirIndex, sideW, ROOM_HEIGHT, WALL_T, off, ROOM_HEIGHT / 2, nd);
   addWallBox(group, sm.wall, dirIndex, sideW, ROOM_HEIGHT, WALL_T, -off, ROOM_HEIGHT / 2, nd);
   const lintelH = ROOM_HEIGHT - DOOR_HEIGHT;
   addWallBox(group, sm.wall, dirIndex, DOOR_HALF_WIDTH * 2, lintelH, WALL_T, 0, DOOR_HEIGHT + lintelH / 2, nd);
-  // Stone/wood door frame: posts, a stepped lintel and a keystone.
-  addWallBox(group, sm.trim, dirIndex, 0.22, DOOR_HEIGHT, 0.55, DOOR_HALF_WIDTH + 0.05, DOOR_HEIGHT / 2, nd);
-  addWallBox(group, sm.trim, dirIndex, 0.22, DOOR_HEIGHT, 0.55, -(DOOR_HALF_WIDTH + 0.05), DOOR_HEIGHT / 2, nd);
-  addWallBox(group, sm.trim, dirIndex, DOOR_HALF_WIDTH * 2 + 0.55, 0.24, 0.55, 0, DOOR_HEIGHT + 0.1, nd);
-  addWallBox(group, sm.accent, dirIndex, 0.4, 0.34, 0.58, 0, DOOR_HEIGHT + 0.12, nd);
+  // Frame posts hug the opening edge; shallower depth avoids clipping into walkers.
+  const postTan = DOOR_HALF_WIDTH - 0.02;
+  addWallBox(group, sm.trim, dirIndex, 0.16, DOOR_HEIGHT, 0.36, postTan, DOOR_HEIGHT / 2, nd);
+  addWallBox(group, sm.trim, dirIndex, 0.16, DOOR_HEIGHT, 0.36, -postTan, DOOR_HEIGHT / 2, nd);
+  addWallBox(group, sm.trim, dirIndex, DOOR_HALF_WIDTH * 2 + 0.2, 0.22, 0.36, 0, DOOR_HEIGHT + 0.08, nd);
+  addWallBox(group, sm.accent, dirIndex, 0.36, 0.3, 0.4, 0, DOOR_HEIGHT + 0.1, nd);
 }
 
 function buildShelfFrame(group, sm, dirIndex, rowYs) {
@@ -316,7 +322,30 @@ function buildBeams(group, sm) {
   }
 }
 
-const IVORY = new THREE.Color(0xd9cba6);
+const IVORY = new THREE.Color(0xfff4dc);
+const INTRO_GOLD = new THREE.Color(0xffe8a8);
+const APHORISM_SEA = new THREE.Color(0xc8e8dc);
+const MARKED_EMISSIVE = {
+  clue: new THREE.Color(0xff8844),
+  intro: new THREE.Color(0xffcc55),
+  aphorism: new THREE.Color(0x55cc99),
+};
+const markedBookMat = new THREE.MeshStandardMaterial({
+  color: 0xffffff,
+  emissive: 0xff9944,
+  emissiveIntensity: 1.45,
+  roughness: 0.35,
+  metalness: 0.08,
+});
+export { markedBookMat };
+const ribbonGeo = new THREE.PlaneGeometry(0.06, 0.28);
+const ribbonMat = new THREE.MeshBasicMaterial({
+  color: 0xff6644,
+  transparent: true,
+  opacity: 0.95,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+});
 const tmpMatrix = new THREE.Matrix4();
 const tmpQuat = new THREE.Quaternion();
 const tmpPos = new THREE.Vector3();
@@ -349,13 +378,13 @@ function buildBooks(roomData, darkVariant) {
   mesh.frustumCulled = false;
   const baseColors = new Float32Array(presentCount * 3);
   const bookIndexMap = new Array(presentCount);
-  const coherentInstances = [];
   const rng = mulberry32(roomData.seed ^ 0xb0b0);
   const pitch = SHELF_SPAN / perRow;
   const rowYs = shelfRowYs(rows);
   const rowStep = (SHELF_TOP - SHELF_BOTTOM) / rows;
   const maxH = Math.min(0.9, rowStep - 0.22);
   const euler = new THREE.Euler();
+  const markedEntries = []; // readable volumes: protrude from the shelf
 
   let i = 0;
   for (let w = 0; w < roomData.shelfWalls.length; w++) {
@@ -366,8 +395,6 @@ function buildBooks(roomData, darkVariant) {
       const y0 = rowYs[row];
       for (let col = 0; col < perRow; col++) {
         const index = w * rows * perRow + row * perRow + col;
-        // Keep the rng call count identical for every slot so gaps don't
-        // reshuffle the appearance of every book after them.
         const jitter = rng();
         const hRoll = rng();
         const wRoll = rng();
@@ -375,44 +402,100 @@ function buildBooks(roomData, darkVariant) {
         const leanAmt = rng();
         if (missing.has(index)) continue;
         const isFlat = flat.has(index);
+        const isMarked = !darkVariant && roomData.readable.has(index);
         const tanOff = -SHELF_SPAN / 2 + pitch * (col + 0.5) + (jitter - 0.5) * 0.03;
         const h = maxH * (0.72 + hRoll * 0.28);
         const spineW = pitch * (0.68 + wRoll * 0.24);
+        const protrude = isMarked ? 0.2 : 0;
+        const ndUse = nd - protrude;
         if (isFlat) {
-          // A volume left lying on the shelf.
-          tmpPos.set(n.x * nd + t.x * tanOff, y0 + 0.05, n.z * nd + t.z * tanOff);
+          tmpPos.set(n.x * ndUse + t.x * tanOff, y0 + 0.05, n.z * ndUse + t.z * tanOff);
           euler.set(0, yaw + (leanAmt - 0.5) * 0.5, 0);
           tmpQuat.setFromEuler(euler);
           tmpScale.set(h * 0.75, spineW * 1.1, BOOK_DEPTH * 1.05);
         } else {
           const lean = leanRoll < 0.08 ? (leanAmt - 0.5) * 0.14 : 0;
-          tmpPos.set(n.x * nd + t.x * tanOff, y0 + h / 2, n.z * nd + t.z * tanOff);
+          tmpPos.set(n.x * ndUse + t.x * tanOff, y0 + h / 2, n.z * ndUse + t.z * tanOff);
           euler.set(0, yaw, lean);
           tmpQuat.setFromEuler(euler);
-          tmpScale.set(spineW, h, BOOK_DEPTH * (0.85 + jitter * 0.15));
+          const scaleBoost = isMarked ? 1.28 : 1;
+          tmpScale.set(spineW * scaleBoost, h * scaleBoost, BOOK_DEPTH * (0.85 + jitter * 0.15));
         }
         tmpMatrix.compose(tmpPos, tmpQuat, tmpScale);
         mesh.setMatrixAt(i, tmpMatrix);
-        const isCoherent = !darkVariant && roomData.coherent.has(index);
-        if (isCoherent) {
-          tmpColor.copy(IVORY);
-          coherentInstances.push(i);
-        } else {
-          spineColor(rng, tmpColor);
-        }
+        spineColor(rng, tmpColor);
         if (darkVariant) tmpColor.multiplyScalar(0.25);
         mesh.setColorAt(i, tmpColor);
         baseColors[i * 3] = tmpColor.r;
         baseColors[i * 3 + 1] = tmpColor.g;
         baseColors[i * 3 + 2] = tmpColor.b;
         bookIndexMap[i] = index;
+        if (isMarked) {
+          const kind = roomData.coherent.get(index)?.kind ?? 'clue';
+          markedEntries.push({
+            index,
+            kind,
+            matrix: tmpMatrix.clone(),
+            ribbonY: isFlat ? y0 + 0.22 : y0 + h + 0.08,
+            ribbonPos: tmpPos.clone(),
+            normal: n,
+            yaw,
+          });
+        }
         i += 1;
       }
     }
   }
   mesh.instanceMatrix.needsUpdate = true;
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  return { mesh, baseColors, bookIndexMap, coherentInstances };
+
+  const marked = buildMarkedVolumes(markedEntries, darkVariant);
+  return { mesh, baseColors, bookIndexMap, marked };
+}
+
+/** Glowing marked spines + silk ribbons — the only volumes you can open. */
+function buildMarkedVolumes(entries, darkVariant) {
+  if (entries.length === 0 || darkVariant) {
+    return { mesh: null, indexMap: [], ribbons: null, positions: [], kinds: [] };
+  }
+  const count = entries.length;
+  const markedMesh = new THREE.InstancedMesh(box, markedBookMat, count);
+  markedMesh.frustumCulled = false;
+  const indexMap = [];
+  const kinds = [];
+  const positions = [];
+  const emissiveColors = [];
+
+  for (let i = 0; i < count; i++) {
+    const e = entries[i];
+    markedMesh.setMatrixAt(i, e.matrix);
+    indexMap.push(e.index);
+    kinds.push(e.kind);
+    let spine;
+    if (e.kind === 'intro') spine = INTRO_GOLD;
+    else if (e.kind === 'aphorism') spine = APHORISM_SEA;
+    else spine = IVORY;
+    markedMesh.setColorAt(i, spine);
+    emissiveColors.push(MARKED_EMISSIVE[e.kind] ?? MARKED_EMISSIVE.clue);
+    positions.push(e.ribbonPos.x, e.ribbonPos.y + 0.12, e.ribbonPos.z);
+  }
+  markedMesh.instanceMatrix.needsUpdate = true;
+  markedMesh.instanceColor.needsUpdate = true;
+
+  const ribbons = new THREE.InstancedMesh(ribbonGeo, ribbonMat, count);
+  ribbons.frustumCulled = false;
+  for (let i = 0; i < count; i++) {
+    const e = entries[i];
+    tmpPos.copy(e.ribbonPos);
+    tmpPos.y = e.ribbonY;
+    tmpQuat.setFromEuler(new THREE.Euler(0, e.yaw, 0));
+    tmpScale.set(1, 1, 1);
+    tmpMatrix.compose(tmpPos, tmpQuat, tmpScale);
+    ribbons.setMatrixAt(i, tmpMatrix);
+  }
+  ribbons.instanceMatrix.needsUpdate = true;
+
+  return { mesh: markedMesh, indexMap, ribbons, positions, kinds, emissiveColors };
 }
 
 /** Dim silhouette of a gallery, placed above and below the void. */
@@ -427,7 +510,7 @@ function buildGhostRoom(yOffset) {
   ring.position.y = 1.02;
   g.add(ring);
   for (let k = 0; k < 6; k++) {
-    addWallBox(g, mats.ghost, k, WALL_LEN, ROOM_HEIGHT, WALL_T, 0, ROOM_HEIGHT / 2, HEX_INRADIUS + WALL_T / 2);
+    addWallBox(g, mats.ghost, k, WALL_LEN, ROOM_HEIGHT, WALL_T, 0, ROOM_HEIGHT / 2, WALL_ND);
     addWallBox(g, mats.ghost, k, SHELF_SPAN, 4.4, 0.6, 0, 2.25, HEX_INRADIUS - 0.35);
   }
   for (const sx of [-2.4, 2.4]) {
@@ -574,6 +657,160 @@ function buildGlyphs(rng, crimson) {
   return { points, data };
 }
 
+// A circular seal with inner strokes, hung glowing above every doorway.
+const sigilTexture = (() => {
+  const size = 256;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = size;
+  const g = cv.getContext('2d');
+  // Soft halo behind the linework so the seal reads as a glow from afar.
+  const grad = g.createRadialGradient(128, 128, 10, 128, 128, 120);
+  grad.addColorStop(0, 'rgba(255, 220, 170, 0.55)');
+  grad.addColorStop(1, 'rgba(255, 220, 170, 0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, size, size);
+  g.strokeStyle = 'rgba(255, 230, 190, 1)';
+  g.lineWidth = 9;
+  g.beginPath();
+  g.arc(128, 128, 104, 0, Math.PI * 2);
+  g.stroke();
+  g.lineWidth = 6;
+  g.beginPath();
+  g.arc(128, 128, 80, 0, Math.PI * 2);
+  g.stroke();
+  // Inner sigil: a triangle over a crossed bar, like a bookbinder's mark.
+  g.lineWidth = 7;
+  g.beginPath();
+  g.moveTo(128, 60);
+  g.lineTo(180, 176);
+  g.lineTo(76, 176);
+  g.closePath();
+  g.moveTo(92, 128);
+  g.lineTo(164, 128);
+  g.moveTo(128, 176);
+  g.lineTo(128, 208);
+  g.stroke();
+  return new THREE.CanvasTexture(cv);
+})();
+
+const sigilGeo = new THREE.PlaneGeometry(1.5, 1.5);
+
+// Moth: two wing quads hinged at the body so they can flap.
+const mothWingGeo = (() => {
+  const geo = new THREE.PlaneGeometry(0.16, 0.09);
+  geo.translate(0.09, 0, 0); // hinge at the inner edge
+  return geo;
+})();
+const mothBodyGeo = new THREE.BoxGeometry(0.025, 0.025, 0.09);
+const mothMat = new THREE.MeshBasicMaterial({
+  color: 0xe8d9b0,
+  transparent: true,
+  opacity: 0.85,
+  side: THREE.DoubleSide,
+});
+
+function buildMoth() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(mothBodyGeo, mothMat);
+  g.add(body);
+  const left = new THREE.Mesh(mothWingGeo, mothMat);
+  const right = new THREE.Mesh(mothWingGeo, mothMat);
+  right.scale.x = -1;
+  g.add(left);
+  g.add(right);
+  return { group: g, left, right };
+}
+
+// Spectral creatures that haunt the galleries (owl, beetle — not on shelves).
+const spiritMat = new THREE.MeshBasicMaterial({
+  color: 0xd8cbb0,
+  transparent: true,
+  opacity: 0.5,
+  side: THREE.DoubleSide,
+});
+
+function buildOwl() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), spiritMat);
+  g.add(body);
+  const head = new THREE.Group();
+  head.position.y = 0.12;
+  const face = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 6), spiritMat);
+  head.add(face);
+  const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffcc66 });
+  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 4), eyeMat);
+  eyeL.position.set(0.05, 0.02, 0.06);
+  head.add(eyeL);
+  const eyeR = eyeL.clone();
+  eyeR.position.z = -0.06;
+  head.add(eyeR);
+  g.add(head);
+  const wingL = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.2), spiritMat);
+  wingL.position.set(-0.1, 0, 0.12);
+  wingL.rotation.y = 0.3;
+  g.add(wingL);
+  const wingR = wingL.clone();
+  wingR.position.z = -0.12;
+  wingR.rotation.y = -0.3;
+  g.add(wingR);
+  return { group: g, head };
+}
+
+function buildBeetle() {
+  const g = new THREE.Group();
+  const shell = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 4), spiritMat);
+  shell.scale.set(1.4, 0.7, 1);
+  g.add(shell);
+  const legMat = new THREE.MeshBasicMaterial({ color: 0xa89880, transparent: true, opacity: 0.45 });
+  for (let k = 0; k < 6; k++) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.01, 0.08), legMat);
+    const a = (k / 6) * Math.PI * 2;
+    leg.position.set(Math.cos(a) * 0.07, -0.02, Math.sin(a) * 0.07);
+    leg.rotation.y = a;
+    g.add(leg);
+  }
+  return { group: g };
+}
+
+const pageGeo = new THREE.PlaneGeometry(0.22, 0.3);
+const pageMat = new THREE.MeshBasicMaterial({
+  color: 0xf0e4c8,
+  transparent: true,
+  opacity: 0.35,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+});
+
+function buildFloatingPages(rng, count) {
+  const pages = [];
+  for (let i = 0; i < count; i++) {
+    const mesh = new THREE.Mesh(pageGeo, pageMat);
+    mesh.position.set(
+      (rng() - 0.5) * 5,
+      0.8 + rng() * 3.2,
+      (rng() - 0.5) * 5
+    );
+    mesh.rotation.set(rng() * 0.5, rng() * Math.PI * 2, rng() * 0.3);
+    pages.push({
+      mesh,
+      phase: rng() * Math.PI * 2,
+      drift: 0.12 + rng() * 0.18,
+      spin: 0.2 + rng() * 0.4,
+    });
+  }
+  return pages;
+}
+
+const innerRuneGeo = new THREE.RingGeometry(RAIL_RADIUS + 0.15, RAIL_RADIUS + 0.55, 36, 1);
+const orbGeo = new THREE.SphereGeometry(0.08, 8, 6);
+const orbMat = new THREE.MeshBasicMaterial({
+  color: 0xffc98a,
+  transparent: true,
+  opacity: 0.55,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+
 // Soft circular sprite so motes don't render as hard squares.
 const dustTexture = (() => {
   const size = 32;
@@ -658,7 +895,7 @@ export function buildRoom(roomData, { crimson = false } = {}) {
 
   const rowYs = shelfRowYs(roomData.rows);
   for (let k = 0; k < 6; k++) {
-    if (roomData.doors.includes(k)) buildDoorway(group, sm, k);
+    if (!crimson && roomData.doors.includes(k)) buildDoorway(group, sm, k);
     else buildShelfFrame(group, sm, k, rowYs);
   }
 
@@ -683,6 +920,27 @@ export function buildRoom(roomData, { crimson = false } = {}) {
   group.add(runeRing);
   const runeSpin = (rng() < 0.5 ? 1 : -1) * (0.03 + rng() * 0.05);
 
+  // Inner warding ring, counter-rotating faster.
+  const innerRing = new THREE.Mesh(innerRuneGeo, crimson ? runeRingMatCrimson : runeRingMat);
+  innerRing.rotation.x = -Math.PI / 2;
+  innerRing.position.y = 0.05;
+  group.add(innerRing);
+  const innerSpin = -runeSpin * 2.2;
+
+  // Glowing orbs atop each column.
+  const columnOrbs = [];
+  for (let k = 0; k < 6; k++) {
+    const a = (Math.PI / 3) * k;
+    const orb = new THREE.Mesh(orbGeo, orbMat.clone());
+    orb.position.set(
+      Math.cos(a) * COLUMN_RING_RADIUS,
+      ROOM_HEIGHT - 0.35,
+      Math.sin(a) * COLUMN_RING_RADIUS
+    );
+    group.add(orb);
+    columnOrbs.push({ mesh: orb, phase: rng() * Math.PI * 2 });
+  }
+
   // Faint light shaft in the void, and glyph motes drifting up through it.
   const shaftMat = new THREE.MeshBasicMaterial({
     color: crimson ? 0xff2a33 : 0xffc98a,
@@ -699,11 +957,163 @@ export function buildRoom(roomData, { crimson = false } = {}) {
   const glyphs = buildGlyphs(rng, crimson);
   group.add(glyphs.points);
 
-  const { mesh: books, baseColors, bookIndexMap, coherentInstances } = buildBooks(
-    roomData,
-    crimson
-  );
+  // Mirrored warding circle on the ceiling, spinning against the floor one.
+  const ceilRing = new THREE.Mesh(runeRingGeo, crimson ? runeRingMatCrimson : runeRingMat);
+  ceilRing.rotation.x = Math.PI / 2;
+  ceilRing.position.y = ROOM_HEIGHT - 0.03;
+  group.add(ceilRing);
+
+  // Glowing seals above every doorway.
+  const sigils = [];
+  const sigilMat = new THREE.MeshBasicMaterial({
+    map: sigilTexture,
+    color: crimson ? 0xff2a33 : 0xffc98a,
+    transparent: true,
+    opacity: 0.5,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  for (const d of roomData.doors) {
+    const { n, yaw } = wallTransform(d);
+    const dist = HEX_INRADIUS - 0.08;
+    const sigil = new THREE.Mesh(sigilGeo, sigilMat);
+    sigil.position.set(n.x * dist, 4.15, n.z * dist);
+    sigil.rotation.y = yaw + Math.PI;
+    group.add(sigil);
+    sigils.push(sigil);
+  }
+
+  // Faint star-motes twinkling just under the ceiling.
+  const starCount = 22;
+  const starBase = new Float32Array(starCount * 3);
+  const starPhase = new Float32Array(starCount);
+  for (let i = 0; i < starCount; i++) {
+    const a = rng() * Math.PI * 2;
+    const rad = 1.2 + rng() * 4.2;
+    starBase[i * 3] = Math.cos(a) * rad;
+    starBase[i * 3 + 1] = ROOM_HEIGHT - 0.45 - rng() * 0.7;
+    starBase[i * 3 + 2] = Math.sin(a) * rad;
+    starPhase[i] = rng() * Math.PI * 2;
+  }
+  const starGeo = new THREE.BufferGeometry();
+  starGeo.setAttribute('position', new THREE.BufferAttribute(starBase.slice(), 3));
+  const starMat = new THREE.PointsMaterial({
+    map: dustTexture,
+    color: crimson ? 0xff6a6a : 0xcfe0ff,
+    size: 0.06,
+    transparent: true,
+    opacity: 0.4,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const stars = new THREE.Points(starGeo, starMat);
+  stars.frustumCulled = false;
+  group.add(stars);
+
+  const { mesh: books, baseColors, bookIndexMap, marked } = buildBooks(roomData, crimson);
   group.add(books);
+  if (marked.mesh) {
+    group.add(marked.mesh);
+    group.add(marked.ribbons);
+  }
+
+  // Tiny sparkles orbiting the marked volumes.
+  let sparkles = null;
+  let sparkleData = [];
+  if (marked.positions.length > 0) {
+    const sparkGeo = new THREE.BufferGeometry();
+    sparkGeo.setAttribute(
+      'position',
+      new THREE.BufferAttribute(new Float32Array(marked.positions), 3)
+    );
+    const sparkMat = new THREE.PointsMaterial({
+      map: dustTexture,
+      color: 0xffe9b0,
+      size: 0.12,
+      transparent: true,
+      opacity: 0.65,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    sparkles = new THREE.Points(sparkGeo, sparkMat);
+    sparkles.frustumCulled = false;
+    group.add(sparkles);
+    for (let s = 0; s < marked.positions.length / 3; s++) {
+      sparkleData.push({
+        phase: rng() * Math.PI * 2,
+        radius: 0.12 + rng() * 0.08,
+        bx: marked.positions[s * 3],
+        by: marked.positions[s * 3 + 1],
+        bz: marked.positions[s * 3 + 2],
+      });
+    }
+  }
+
+  // A wandering wisp of lamplight.
+  const wispMat = new THREE.SpriteMaterial({
+    map: haloTexture,
+    color: crimson ? 0xff4444 : 0xffd9a0,
+    transparent: true,
+    opacity: 0.65,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const wisp = new THREE.Sprite(wispMat);
+  wisp.scale.setScalar(0.4);
+  group.add(wisp);
+  const wispSeed = rng() * Math.PI * 2;
+
+  // A pair of spectral moths circling the lamps.
+  const moths = [];
+  const mothAnchors =
+    def.lampSpots.length > 0
+      ? def.lampSpots.map(([sx, sz]) => ({ x: sx, y: ROOM_HEIGHT - 0.7, z: sz }))
+      : [{ x: 0, y: 2.6, z: 0 }];
+  for (let m = 0; m < 2; m++) {
+    const moth = buildMoth();
+    moths.push({
+      ...moth,
+      anchor: mothAnchors[m % mothAnchors.length],
+      phase: rng() * Math.PI * 2,
+      speed: 0.5 + rng() * 0.5,
+      radius: 0.55 + rng() * 0.4,
+      flap: 9 + rng() * 5,
+    });
+    group.add(moth.group);
+  }
+
+  // Solid library cats wandering the floor (1–2 per room, varied colors).
+  const cats = createRoomCats(roomData, rng, { crimson });
+  for (const cat of cats) group.add(cat.group);
+
+  // Owl on a random column capital.
+  let owl = null;
+  if (!crimson) {
+    const col = Math.floor(rng() * 6);
+    const a = (Math.PI / 3) * col;
+    owl = buildOwl();
+    owl.group.position.set(
+      Math.cos(a) * COLUMN_RING_RADIUS,
+      ROOM_HEIGHT - 0.55,
+      Math.sin(a) * COLUMN_RING_RADIUS
+    );
+    owl.group.rotation.y = a + Math.PI;
+    group.add(owl.group);
+  }
+
+  // Beetle crawling the void railing.
+  let beetle = null;
+  if (!crimson) {
+    beetle = buildBeetle();
+    beetle.phase = rng() * Math.PI * 2;
+    beetle.speed = 0.25 + rng() * 0.2;
+    group.add(beetle.group);
+  }
+
+  // Torn pages drifting upward like ash.
+  const pages = crimson ? [] : buildFloatingPages(rng, 2 + Math.floor(rng() * 2));
+  for (const p of pages) group.add(p.mesh);
 
   let crimsonBook = null;
   let ember = null;
@@ -762,13 +1172,31 @@ export function buildRoom(roomData, { crimson = false } = {}) {
   return {
     group,
     books,
+    markedBooks: marked.mesh,
+    markedIndexMap: marked.indexMap,
+    markedRibbons: marked.ribbons,
+    markedEmissive: marked.emissiveColors ?? [],
     baseColors,
     bookIndexMap,
-    coherentInstances,
     dust,
     glyphs,
     runeRing,
+    innerRing,
     runeSpin,
+    innerSpin,
+    ceilRing,
+    columnOrbs,
+    sigils,
+    stars: { points: stars, base: starBase, phase: starPhase },
+    sparkles,
+    sparkleData,
+    wisp,
+    wispSeed,
+    moths,
+    cats,
+    owl,
+    beetle,
+    pages,
     shaft,
     halos,
     light,
@@ -778,11 +1206,24 @@ export function buildRoom(roomData, { crimson = false } = {}) {
     data: roomData,
     dispose() {
       books.dispose();
+      marked.mesh?.dispose();
+      marked.ribbons?.dispose();
+      markedBookMat.dispose();
       dust.points.geometry.dispose();
       dust.points.material.dispose();
       glyphs.points.geometry.dispose();
       glyphs.points.material.dispose();
+      stars.geometry.dispose();
+      starMat.dispose();
+      if (sparkles) {
+        sparkles.geometry.dispose();
+        sparkles.material.dispose();
+      }
+      sigilMat.dispose();
+      wispMat.dispose();
       shaftMat.dispose();
+      for (const o of columnOrbs) o.mesh.material.dispose();
+      disposeCats(cats);
       for (const m of tinted) m.dispose();
     },
   };

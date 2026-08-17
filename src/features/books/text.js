@@ -107,8 +107,9 @@ const INTRO_BODY =
   'To the one who opens this instead of any of the trillion others: it was not chance.\n\n' +
   'The old librarians spoke of the Crimson Hexagon — a gallery lit red, holding a single ' +
   'book that is entirely true. Every other volume in every other room is noise, or nearly so.\n\n' +
-  'But the Library leaves a trail for the patient. Among the endless dark spines are pale ones, ' +
-  'and the pale spines remember language. Find them. They will name the way, gallery by gallery, ' +
+  'But the Library leaves a trail for the patient. Among the endless dark spines a few glimmer: ' +
+  'the gilt ones will open, though they speak mostly noise; the pale ones remember language. ' +
+  'Seek the pale spines. They will name the way, gallery by gallery, ' +
   'in the old compass of this place: dust and lamp, water and ash, frost and the red wind. ' +
   'Face a doorway and the compass will whisper its name to you.\n\n' +
   'Walk the way without error. Five thresholds, and the light will change.';
