@@ -1,4 +1,4 @@
-# The Library of Babel
+# The Infinite Library
 
 A 3D first-person exploration game inspired by Jorge Luis Borges' short story,
 built with React and Three.js.

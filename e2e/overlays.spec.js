@@ -28,7 +28,7 @@ test.describe('overlays', () => {
     await page.getByRole('button', { name: 'Pause' }).click();
     await page.getByRole('button', { name: 'Restart the Search' }).click();
     await expect(
-      page.getByRole('dialog', { name: 'The Library of Babel' })
+      page.getByRole('dialog', { name: 'The Infinite Library' })
     ).toBeVisible();
     await expect(
       page.getByRole('button', { name: 'Enter the Library' })
@@ -106,7 +106,7 @@ test.describe('overlays', () => {
 
     await page.getByRole('button', { name: 'Begin Again' }).click();
     await expect(
-      page.getByRole('dialog', { name: 'The Library of Babel' })
+      page.getByRole('dialog', { name: 'The Infinite Library' })
     ).toBeVisible();
     await expect(ending).toHaveCount(0);
   });

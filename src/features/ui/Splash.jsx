@@ -10,7 +10,7 @@ export default function Splash({ onStart, touch }) {
       <div className="splash-inner">
         <div className="splash-rule" />
         <h1 id="splash-title" className="splash-title">
-          The Library of Babel
+          The Infinite Library
         </h1>
         <p className="splash-homage">
           Every book that could ever be written waits on these shelves; almost

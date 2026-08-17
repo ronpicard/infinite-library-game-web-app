@@ -5,7 +5,7 @@ test.describe('smoke', () => {
   test('shows the splash and a live canvas', async ({ page }) => {
     await open(page);
     await expect(
-      page.getByRole('dialog', { name: 'The Library of Babel' })
+      page.getByRole('dialog', { name: 'The Infinite Library' })
     ).toBeVisible();
     await expect(
       page.getByRole('button', { name: 'Enter the Library' })
@@ -18,7 +18,7 @@ test.describe('smoke', () => {
     await open(page);
     await page.getByRole('button', { name: 'Enter the Library' }).click();
     await expect(
-      page.getByRole('dialog', { name: 'The Library of Babel' })
+      page.getByRole('dialog', { name: 'The Infinite Library' })
     ).toHaveCount(0);
     await expect(page.getByTestId('hud')).toBeVisible();
     await expect(page.getByText('1 galleries')).toBeVisible();
